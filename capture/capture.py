@@ -608,6 +608,10 @@ def sign_in(context: Any, gateway: Gateway) -> Any:
     page.goto(f"{gateway.base_url}/?token={gateway.token}", wait_until="load", timeout=60_000)
     # The token is exchanged for a session cookie; drop it from the address.
     page.goto(f"{gateway.base_url}/", wait_until="load", timeout=60_000)
+    # The dashboard may route itself once after the load (to the last page it
+    # showed); a fetch evaluated during that navigation loses its context. The
+    # page keeps a live event stream open, so "network idle" never arrives.
+    page.wait_for_timeout(2_500)
     return page
 
 

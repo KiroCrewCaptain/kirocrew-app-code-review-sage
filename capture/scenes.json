@@ -3,11 +3,22 @@
   "fixture": "minimal",
   "locale": "en-US",
   "timezone": "UTC",
+  "provenance_note": "The isolated gateway served this repository's own copy of the app: capture.py's setup installed it from this checkout (POST /api/apps/install), trusted it and enabled it, and every picture shows its committed bundle (ui/dist/index.mjs) and backend. Kiro Crew still ships a built-in code-review-sage and refuses a second install under the same name, so the Kiro Crew tree the capture ran on is the App Kit level-1 commit with only the built-in copy removed (src/kiro_crew/apps/builtins/code_review_sage and its BUILTIN_NAMES row); kirocrew_tree_dirty records that. GitHub was the capture's stand-in gh (capture/gh_stub), never the real one.",
+  "live_stills_from_walkthrough": true,
+  "data_notes": [
+    "The GitHub in these pictures is invented: the fernleaf-garden organisation, its seed-swap and planting-calendar repositories, their pull requests, diffs and people, and the signed-in user sam-fernleaf are served by capture/gh_stub/gh from capture/gh_stub/data.json. None of them exists on GitHub, so the links lead nowhere.",
+    "The repositories were added and the review setting changed through the app's own API (capture/scenes.json setup); the review itself was started from the page in the recorded walkthrough.",
+    "Every finding, its wording and its count came from a live model reading those diffs during the capture, so they differ from run to run.",
+    "Reviews at once was set to 1 for the capture, so the two reviews ran one after the other.",
+    "The live stills (hero, use-case-report, use-case-finding) were taken on the walkthrough's own gateway after it was recorded, so they show the same review as the recording."
+  ],
   "init_storage": {
     "mc-nav": "0"
   },
   "ready": "text=Code Review Sage",
-  "forbid_text": [],
+  "forbid_text": [
+    "Something went wrong"
+  ],
   "setup": [
     {
       "name": "install this repository",
@@ -38,7 +49,7 @@
       "optional": true
     },
     {
-      "name": "pin the demo repository",
+      "name": "add the demo repositories",
       "method": "POST",
       "path": "/api/apps/code-review-sage/repos",
       "body": {
@@ -47,46 +58,265 @@
       }
     },
     {
-      "name": "review two pull requests on the live model",
       "method": "POST",
-      "path": "/api/apps/code-review-sage/review",
+      "path": "/api/apps/code-review-sage/repos",
       "body": {
-        "changes": [
-          "https://github.com/fernleaf-garden/seed-swap/pull/42",
-          "https://github.com/fernleaf-garden/seed-swap/pull/43"
-        ]
-      },
-      "save": {
-        "run_id": "run_id"
-      },
-      "passes": [
-        "screenshots-live"
-      ]
+        "owner": "fernleaf-garden",
+        "repo": "planting-calendar"
+      }
+    },
+    {
+      "name": "review one pull request at a time",
+      "method": "PUT",
+      "path": "/api/apps/code-review-sage/settings",
+      "body": {
+        "max_concurrent": 1
+      }
     }
   ],
   "screenshots": [
     {
-      "name": "start",
+      "name": "use-case-pick",
       "path": "/apps/code-review-sage",
-      "themes": [
-        "light"
-      ],
-      "alt": "probe"
-    },
-    {
-      "name": "probe-live",
-      "live": true,
-      "path": "/apps/code-review-sage?run={{run_id}}",
       "themes": [
         "light"
       ],
       "steps": [
         {
-          "wait_for": "text=/changes? reviewed/",
-          "timeout_ms": 1500000
+          "click": "role=button[name='Pick a repository']"
+        },
+        {
+          "click": "role=menuitem[name='fernleaf-garden/seed-swap']"
+        },
+        {
+          "wait_for": "text=Let members cancel a swap request"
+        },
+        {
+          "click": "input[aria-label^='Review pull request #42:']"
+        },
+        {
+          "click": "input[aria-label^='Review pull request #43:']"
+        },
+        {
+          "mouse_park": [
+            1300,
+            860
+          ]
         }
       ],
-      "alt": "probe"
+      "alt": "The Code Review Sage page with the fernleaf-garden/seed-swap repository picked: its three open pull requests are listed (#42 Cache the frost-date lookup per postcode, #43 Let members cancel a swap request, #44 Fix a typo in the welcome email), #42 and #43 are ticked, and the Review 2 selected button is ready"
+    },
+    {
+      "name": "requests",
+      "path": "/apps/code-review-sage",
+      "themes": [
+        "light"
+      ],
+      "steps": [
+        {
+          "click": "role=tab[name=\"Requests\"s]"
+        },
+        {
+          "wait_for": "text=Show the frost dates on the month header"
+        },
+        {
+          "mouse_park": [
+            1300,
+            860
+          ]
+        }
+      ],
+      "alt": "The Requests tab: the two open pull requests that ask sam-fernleaf for a review, #43 Let members cancel a swap request in fernleaf-garden/seed-swap and #7 Show the frost dates on the month header in fernleaf-garden/planting-calendar"
+    },
+    {
+      "name": "hero",
+      "live": true,
+      "path": "/apps/code-review-sage",
+      "themes": [
+        "light",
+        "dark"
+      ],
+      "steps": [
+        {
+          "click": "role=tab[name='Reviews']"
+        },
+        {
+          "click": "role=button[name=/Review of fernleaf-garden\\/seed-swap/]"
+        },
+        {
+          "wait_for": "text=/2 changes reviewed/",
+          "timeout_ms": 60000
+        },
+        {
+          "mouse_park": [
+            1300,
+            860
+          ]
+        }
+      ],
+      "alt": "A finished review of two seed-swap pull requests: the Focus Report ranks both as Needs review and shows each one's design risk, blast radius and counts of blocking and should-fix findings"
+    },
+    {
+      "name": "use-case-report",
+      "live": true,
+      "path": "/apps/code-review-sage",
+      "themes": [
+        "light"
+      ],
+      "steps": [
+        {
+          "click": "role=tab[name='Reviews']"
+        },
+        {
+          "click": "role=button[name=/Review of fernleaf-garden\\/seed-swap/]"
+        },
+        {
+          "wait_for": "text=/2 changes reviewed/",
+          "timeout_ms": 60000
+        },
+        {
+          "click": "role=button[name=/Cache the frost-date lookup per postcode/]"
+        },
+        {
+          "wait_ms": 800
+        },
+        {
+          "mouse_park": [
+            1300,
+            860
+          ]
+        }
+      ],
+      "alt": "placeholder"
+    },
+    {
+      "name": "use-case-finding",
+      "live": true,
+      "path": "/apps/code-review-sage",
+      "themes": [
+        "light"
+      ],
+      "steps": [
+        {
+          "click": "role=tab[name='Reviews']"
+        },
+        {
+          "click": "role=button[name=/Review of fernleaf-garden\\/seed-swap/]"
+        },
+        {
+          "wait_for": "text=/2 changes reviewed/",
+          "timeout_ms": 60000
+        },
+        {
+          "click": "role=button[name=/Let members cancel a swap request/]"
+        },
+        {
+          "wait_ms": 800
+        },
+        {
+          "scroll": "text=must-fix"
+        },
+        {
+          "wait_ms": 600
+        },
+        {
+          "mouse_park": [
+            1300,
+            860
+          ]
+        }
+      ],
+      "alt": "placeholder"
     }
-  ]
+  ],
+  "walkthrough": {
+    "name": "walkthrough",
+    "theme": "light",
+    "live": true,
+    "path": "/apps/code-review-sage",
+    "alt": "A walkthrough of Code Review Sage: picking the seed-swap repository, ticking two pull requests, starting the review, the progress panel while each pull request is reviewed in its own session, and the finished Focus Report with one pull request's findings opened",
+    "steps": [
+      {
+        "caption": "Pick a repository you added"
+      },
+      {
+        "wait_ms": 1200
+      },
+      {
+        "click": "role=button[name='Pick a repository']"
+      },
+      {
+        "wait_ms": 600
+      },
+      {
+        "click": "role=menuitem[name='fernleaf-garden/seed-swap']"
+      },
+      {
+        "wait_for": "text=Let members cancel a swap request"
+      },
+      {
+        "caption": "Tick the pull requests you want reviewed"
+      },
+      {
+        "wait_ms": 1000
+      },
+      {
+        "click": "input[aria-label^='Review pull request #42:']"
+      },
+      {
+        "click": "input[aria-label^='Review pull request #43:']"
+      },
+      {
+        "wait_ms": 800
+      },
+      {
+        "click": "role=button[name=/Review 2 selected/]"
+      },
+      {
+        "caption": "Each pull request is reviewed in its own session"
+      },
+      {
+        "wait_for": "role=button[name=/Cancel review/]",
+        "timeout_ms": 120000
+      },
+      {
+        "wait_ms": 2500
+      },
+      {
+        "wait_for": "text=/2 changes reviewed/",
+        "timeout_ms": 1800000,
+        "cut": true
+      },
+      {
+        "caption": "The Focus Report ranks what needs your attention"
+      },
+      {
+        "wait_ms": 2500
+      },
+      {
+        "click": "role=button[name=/Let members cancel a swap request/]"
+      },
+      {
+        "caption": "Open a pull request to read its findings"
+      },
+      {
+        "wait_ms": 2500
+      },
+      {
+        "scroll": "text=must-fix"
+      },
+      {
+        "wait_ms": 1500
+      },
+      {
+        "wait_ms": 3500
+      },
+      {
+        "caption": ""
+      },
+      {
+        "wait_ms": 3000
+      }
+    ]
+  }
 }
