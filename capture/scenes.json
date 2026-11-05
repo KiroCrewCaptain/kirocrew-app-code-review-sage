@@ -154,7 +154,7 @@
           ]
         }
       ],
-      "alt": "A finished Code Review Sage review of two fernleaf-garden/seed-swap pull requests: the Focus Report puts both under Needs review, #42 Cache the frost-date lookup per postcode with design risk high, blast radius MEDIUM, 3 blocking and 3 should-fix findings, and #43 Let members cancel a swap request with design risk medium, blast radius SMALL, 1 blocking and 4 should-fix, above a Draft 13 comments button"
+      "alt": "A finished Code Review Sage review of two fernleaf-garden/seed-swap pull requests: the Focus Report puts both under Needs review, #42 Cache the frost-date lookup per postcode with design risk medium, blast radius MEDIUM, 4 blocking and 3 should-fix findings, and #43 Let members cancel a swap request with design risk medium, blast radius SMALL, 1 blocking and 4 should-fix, above a Draft 14 comments button"
     },
     {
       "name": "use-case-report",
@@ -187,7 +187,7 @@
           ]
         }
       ],
-      "alt": "The same Focus Report with #42 Cache the frost-date lookup per postcode opened: its design gate reads Concerns, saying caching frost dates is the right idea but the cache holds failures forever, never expires, has no size limit and drops the request timeout, followed by the problem, why it matters and how well the solution fits"
+      "alt": "The same Focus Report with #42 Cache the frost-date lookup per postcode opened: its design gate reads Concerns, saying the cache treats a failed lookup as a valid answer and should cache only successful replies, in a bounded TTL cache, and keep the request timeout, followed by the problem, why it matters and how well the solution fits"
     },
     {
       "name": "use-case-finding",

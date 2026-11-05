@@ -1,7 +1,7 @@
 {
   "app": "code-review-sage",
-  "captured_at": "2026-11-05T01:28:09Z",
-  "app_commit": "68f5100814c977bac4aba763d4dad0feea7794ac",
+  "captured_at": "2026-11-05T02:45:38Z",
+  "app_commit": "1af6dc89d2fc74b2abb3f0f77f66af3617bae9d6",
   "kirocrew_commit": "55439d87700799a8789a341da65e2e1c355e26fc",
   "kirocrew_tree_dirty": true,
   "gateway": "isolated temporary home, approval=reads; a freshly seeded gateway for the stub screenshots and one for the walkthrough, whose live run the live screenshots were then taken on",
@@ -35,25 +35,25 @@
       "file": "hero-dark.png",
       "name": "hero",
       "theme": "dark",
-      "bytes": 236271,
+      "bytes": 237188,
       "width": 1600,
       "height": 1000,
-      "alt": "A finished Code Review Sage review of two fernleaf-garden/seed-swap pull requests: the Focus Report puts both under Needs review, #42 Cache the frost-date lookup per postcode with design risk high, blast radius MEDIUM, 3 blocking and 3 should-fix findings, and #43 Let members cancel a swap request with design risk medium, blast radius SMALL, 1 blocking and 4 should-fix, above a Draft 13 comments button"
+      "alt": "A finished Code Review Sage review of two fernleaf-garden/seed-swap pull requests: the Focus Report puts both under Needs review, #42 Cache the frost-date lookup per postcode with design risk medium, blast radius MEDIUM, 4 blocking and 3 should-fix findings, and #43 Let members cancel a swap request with design risk medium, blast radius SMALL, 1 blocking and 4 should-fix, above a Draft 14 comments button"
     },
     {
       "file": "hero-light.png",
       "name": "hero",
       "theme": "light",
-      "bytes": 217913,
+      "bytes": 218355,
       "width": 1600,
       "height": 1000,
-      "alt": "A finished Code Review Sage review of two fernleaf-garden/seed-swap pull requests: the Focus Report puts both under Needs review, #42 Cache the frost-date lookup per postcode with design risk high, blast radius MEDIUM, 3 blocking and 3 should-fix findings, and #43 Let members cancel a swap request with design risk medium, blast radius SMALL, 1 blocking and 4 should-fix, above a Draft 13 comments button"
+      "alt": "A finished Code Review Sage review of two fernleaf-garden/seed-swap pull requests: the Focus Report puts both under Needs review, #42 Cache the frost-date lookup per postcode with design risk medium, blast radius MEDIUM, 4 blocking and 3 should-fix findings, and #43 Let members cancel a swap request with design risk medium, blast radius SMALL, 1 blocking and 4 should-fix, above a Draft 14 comments button"
     },
     {
       "file": "requests-light.png",
       "name": "requests",
       "theme": "light",
-      "bytes": 160948,
+      "bytes": 161295,
       "width": 1600,
       "height": 1000,
       "alt": "The Requests tab: the two open pull requests that ask sam-fernleaf for a review, #43 Let members cancel a swap request in fernleaf-garden/seed-swap and #7 Show the frost dates on the month header in fernleaf-garden/planting-calendar"
@@ -62,7 +62,7 @@
       "file": "use-case-finding-light.png",
       "name": "use-case-finding",
       "theme": "light",
-      "bytes": 374082,
+      "bytes": 397851,
       "width": 1600,
       "height": 1000,
       "alt": "Pull request #43 Let members cancel a swap request opened in the report: the ship-readiness summary says it is not ready to ship because any logged-in member can delete any other member's swap request, and the must-fix security finding below it points at seedswap/routes/swaps.py line 48 with its observation and the code it is about, next to a Draft this comment button"
@@ -71,7 +71,7 @@
       "file": "use-case-pick-light.png",
       "name": "use-case-pick",
       "theme": "light",
-      "bytes": 162602,
+      "bytes": 162993,
       "width": 1600,
       "height": 1000,
       "alt": "The Code Review Sage page with the fernleaf-garden/seed-swap repository picked: its three open pull requests are listed (#42 Cache the frost-date lookup per postcode, #43 Let members cancel a swap request, #44 Fix a typo in the welcome email), #42 and #43 are ticked, and the Review 2 selected button is ready"
@@ -80,23 +80,23 @@
       "file": "use-case-report-light.png",
       "name": "use-case-report",
       "theme": "light",
-      "bytes": 331018,
+      "bytes": 349924,
       "width": 1600,
       "height": 1000,
-      "alt": "The same Focus Report with #42 Cache the frost-date lookup per postcode opened: its design gate reads Concerns, saying caching frost dates is the right idea but the cache holds failures forever, never expires, has no size limit and drops the request timeout, followed by the problem, why it matters and how well the solution fits"
+      "alt": "The same Focus Report with #42 Cache the frost-date lookup per postcode opened: its design gate reads Concerns, saying the cache treats a failed lookup as a valid answer and should cache only successful replies, in a bounded TTL cache, and keep the request timeout, followed by the problem, why it matters and how well the solution fits"
     }
   ],
   "walkthrough": {
     "shortened_waits_s": [
-      262.1
+      258.4
     ],
     "mp4": {
       "file": "walkthrough.mp4",
-      "bytes": 527207
+      "bytes": 479302
     },
     "gif": {
       "file": "walkthrough.gif",
-      "bytes": 3862096,
+      "bytes": 3888601,
       "width": 960,
       "fps": 10
     },

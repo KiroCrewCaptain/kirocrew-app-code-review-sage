@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero-dark.png">
-  <img src="docs/media/hero-light.png" alt="A finished Code Review Sage review of two fernleaf-garden/seed-swap pull requests: the Focus Report puts both under Needs review, #42 Cache the frost-date lookup per postcode with design risk high, blast radius MEDIUM, 3 blocking and 3 should-fix findings, and #43 Let members cancel a swap request with design risk medium, blast radius SMALL, 1 blocking and 4 should-fix, above a Draft 13 comments button">
+  <img src="docs/media/hero-light.png" alt="A finished Code Review Sage review of two fernleaf-garden/seed-swap pull requests: the Focus Report puts both under Needs review, #42 Cache the frost-date lookup per postcode with design risk medium, blast radius MEDIUM, 4 blocking and 3 should-fix findings, and #43 Let members cancel a swap request with design risk medium, blast radius SMALL, 1 blocking and 4 should-fix, above a Draft 14 comments button">
 </picture>
 
 **Find out which pull requests need your attention before you open them.**
@@ -58,7 +58,7 @@ verdict on its design first. In the capture below, the reviewer agreed that
 caching frost dates is worth doing, and said why this cache is not the way to
 do it.
 
-![The same Focus Report with #42 Cache the frost-date lookup per postcode opened: its design gate reads Concerns, saying caching frost dates is the right idea but the cache holds failures forever, never expires, has no size limit and drops the request timeout, followed by the problem, why it matters and how well the solution fits](docs/media/use-case-report-light.png)
+![The same Focus Report with #42 Cache the frost-date lookup per postcode opened: its design gate reads Concerns, saying the cache treats a failed lookup as a valid answer and should cache only successful replies, in a bounded TTL cache, and keep the request timeout, followed by the problem, why it matters and how well the solution fits](docs/media/use-case-report-light.png)
 
 ### 3. Read the findings and decide what to send
 
@@ -77,7 +77,7 @@ ones worth sending go to the pull request as a draft review when you choose
 
 [Watch the walkthrough as a video (MP4)](docs/media/walkthrough.mp4).
 
-<sub>Recorded from a real Kiro Crew (`55439d8770`, with only the built-in copy removed) on a throwaway home, running this repository's own copy of the app. The GitHub shown is invented: the `fernleaf-garden` organisation, its repositories, pull requests and people are served by a stand-in for the `gh` tool (capture/README.md), so the links lead nowhere. The review was started from the page in the recording and the stills above were taken on the same gateway right after it. Every finding came from a live model reading those pull requests, so the wording and the counts will differ on every run. The wait while the two pull requests were reviewed, one after the other, was shortened (about four and a half minutes).</sub>
+<sub>Recorded from a real Kiro Crew (`55439d8770`, with only the built-in copy removed) on a throwaway home, running this repository's own copy of the app. The GitHub shown is invented: the `fernleaf-garden` organisation, its repositories, pull requests and people are served by a stand-in for the `gh` tool (capture/README.md), so the links lead nowhere. The review was started from the page in the recording and the stills above were taken on the same gateway right after it. Every finding came from a live model reading those pull requests, so the wording and the counts will differ on every run. The wait while the two pull requests were reviewed, one after the other, was shortened (a little over four minutes).</sub>
 
 ## Install
 
