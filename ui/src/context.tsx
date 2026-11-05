@@ -546,13 +546,16 @@ export function SageProvider({ children, initialRunId }: {
 
   // Same for a restored review: runs are evicted past a cap, so the id may no
   // longer exist. Clearing it avoids a detail pane waiting on a 404 forever.
+  // Not while the list is being re-read: a review just started is selected
+  // before the refetch that lists it lands, and judging it against the list
+  // from before the start dropped the selection the moment it was made.
   useEffect(() => {
-    if (!selectedRunId || !runsQuery.isSuccess) return
+    if (!selectedRunId || !runsQuery.isSuccess || runsQuery.isFetching) return
     if (!runs.some((r) => r.run_id === selectedRunId)) {
       setSelectedRunId(null)
       setSelectedPr(null)
     }
-  }, [runs, runsQuery.isSuccess, selectedRunId])
+  }, [runs, runsQuery.isSuccess, runsQuery.isFetching, selectedRunId])
 
   // Persist where the user is, on every change. Cheap (one small JSON write) and
   // it means a reload — or a trip to another Kiro Crew page — comes back here.

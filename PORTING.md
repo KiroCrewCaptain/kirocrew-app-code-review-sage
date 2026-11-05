@@ -247,6 +247,13 @@ built-in read them off the response. Strings are `i18nT()` over
 key paths; one key is new
 (`apps.codeReviewSage.components.reviewChat.new_session_unavailable`, gap 1).
 
+One behaviour was fixed on the way: starting a review selected the new run
+before the run list that names it was re-read, and the effect that drops a
+stale selection (`ui/src/context.tsx`) judged it against the list from before
+the start, so the detail pane fell back to "Select a review" instead of showing
+the progress. The effect now waits for the re-read
+(`CodeReviewSageShell.test.tsx`, "opens the review it just started").
+
 | Built-in | Here |
 |---|---|
 | `fetch('/api/apps/code-review-sage/...')` | `ui/src/api.ts`, the same `sageApi` over the scoped client |

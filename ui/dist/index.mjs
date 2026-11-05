@@ -1546,7 +1546,7 @@ function SageProvider({ children, initialRunId }) {
 		if (!list.some((r) => r.owner === activeRepo.owner && r.repo === activeRepo.repo)) setActiveRepo(null);
 	}, [pinnedQuery.data, activeRepo]);
 	useEffect(() => {
-		if (!selectedRunId || !runsQuery.isSuccess) return;
+		if (!selectedRunId || !runsQuery.isSuccess || runsQuery.isFetching) return;
 		if (!runs.some((r) => r.run_id === selectedRunId)) {
 			setSelectedRunId(null);
 			setSelectedPr(null);
@@ -1554,6 +1554,7 @@ function SageProvider({ children, initialRunId }) {
 	}, [
 		runs,
 		runsQuery.isSuccess,
+		runsQuery.isFetching,
 		selectedRunId
 	]);
 	useEffect(() => {

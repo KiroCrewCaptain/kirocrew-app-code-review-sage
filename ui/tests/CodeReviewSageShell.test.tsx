@@ -296,6 +296,32 @@ describe('Code Review Sage shell', () => {
     ]))
   })
 
+  it('opens the review it just started, though the list that names it lands later', async () => {
+    // The start selects the new run before the refetch that lists it returns.
+    // Judged against the list from before the start, the selection used to be
+    // dropped at once and the pane fell back to "Select a review".
+    const url = 'https://github.com/acme/widgets/pull/9'
+    mockApi.repoPrs.mockResolvedValue({
+      repo: 'acme/widgets', count: 1,
+      prs: [prFixture({ change_id: 'GH-acme-widgets-9', number: 9, url, title: 'Bound the jar' })],
+    })
+    mockApi.review.mockResolvedValue({ run_id: 'run-new', changes: [url] })
+    mount({ runs: [], pool: null, reviewer: null })
+    await pickRepo()
+    const live = run({
+      run_id: 'run-new', changes: [url], change_ids: ['GH-acme-widgets-9'],
+      status: 'running', finished_at: undefined, summary: undefined, progress: {},
+    })
+    mockApi.runs.mockImplementation(() => new Promise((resolve) => {
+      setTimeout(() => resolve({ runs: [live], pool: null, reviewer: null }), 60)
+    }))
+    mockApi.run.mockResolvedValue({ run: live })
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Review pull request #9/i }))
+    await userEvent.click(screen.getByRole('button', { name: /Review 1 selected/i }))
+    expect(await screen.findByRole('button', { name: /Cancel review/i })).toBeTruthy()
+    expect(screen.queryByText(/Select a review to see its progress/i)).toBeNull()
+  })
+
   it('gives the detail pane a flex column so the empty state can centre', async () => {
     // Regression: <main> was a flex ITEM but not a flex CONTAINER, so
     // EmptyState's `flex-1` had nothing to resolve against — it collapsed to
