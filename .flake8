@@ -9,3 +9,6 @@ per-file-ignores =
     # so an import only a part reads looks unused here; the import-inventory test in
     # tests/test_routes_parts_composition_contract.py stands in for F401.
     backend/routes.py: F401
+    # The demo pull requests' diffs are string literals, and a unified diff's
+    # blank context line is a single space.
+    capture/gh_stub/make_data.py: W293

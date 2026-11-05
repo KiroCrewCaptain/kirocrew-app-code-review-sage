@@ -141,8 +141,8 @@ CAL_PATCH = """@@ -12,6 +12,12 @@ export function MonthHeader({ month, frost }: 
 
 
 def file_row(filename, patch, status="modified"):
-    adds = sum(1 for l in patch.splitlines() if l.startswith("+") and not l.startswith("+++"))
-    dels = sum(1 for l in patch.splitlines() if l.startswith("-") and not l.startswith("---"))
+    adds = sum(1 for ln in patch.splitlines() if ln.startswith("+") and not ln.startswith("+++"))
+    dels = sum(1 for ln in patch.splitlines() if ln.startswith("-") and not ln.startswith("---"))
     return {"filename": filename, "status": status, "additions": adds, "deletions": dels,
             "changes": adds + dels, "patch": patch}
 
