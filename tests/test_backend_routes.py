@@ -448,6 +448,16 @@ class TestHandlers(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(data["pool"]["max"], 1)        # live occupancy present
         self.assertIn("starting_max", data["pool"])
 
+    async def test_runs_reports_the_configured_cap_before_the_first_review(self):
+        # The page reads "0 of N reviewers busy" from this before any pool exists;
+        # N must be the cap the next review runs at, not the built-in default.
+        await _rp.shutdown_pool()
+        self.mod._write_review_section({"max_concurrent": 1})
+        self.assertNotEqual(_rp.MAX_CONCURRENT, 1)
+        self.mod._RUNS = []
+        resp = await self.mod._handle_runs(None)
+        self.assertEqual(json.loads(resp.body)["pool"]["max"], 1)
+
     async def test_runs_includes_reviewer_model_and_effort(self):
         self.mod._RUNS = []
         resp = await self.mod._handle_runs(None)

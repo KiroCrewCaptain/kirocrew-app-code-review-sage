@@ -22,6 +22,7 @@ vi.mock('../src/context', async importOriginal => {
   return { ...actual, useSage: () => sage as unknown as SageContextValue }
 })
 
+import { version as MANIFEST_VERSION } from '../../app.json'
 import RailHeader, {
   sectionHasList, sectionLabel,
 } from '../src/components/RailHeader'
@@ -61,10 +62,10 @@ describe('Code Review Sage rail header', () => {
     const { unmount } = mount()
     // Decoration, so it is the first thing to go once the row is a phone-width
     // bar competing with a back control and three touch targets.
-    expect(screen.getByText('v2.0'), 'expected the version on the wide rail').toBeTruthy()
+    expect(screen.getByText(`v${MANIFEST_VERSION}`), 'expected the version on the wide rail').toBeTruthy()
     unmount()
     mount({ narrow: true })
-    expect(screen.queryByText('v2.0'), 'expected no version on the bar').toBeNull()
+    expect(screen.queryByText(`v${MANIFEST_VERSION}`), 'expected no version on the bar').toBeNull()
   })
 
   it('renders the shell-supplied leading control', () => {

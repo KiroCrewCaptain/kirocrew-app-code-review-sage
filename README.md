@@ -21,8 +21,8 @@ each change by how much of the code it can affect. The results come back as a
 glance** and **Clean**, with each finding written up so you can decide what to
 do about it.
 
-**Get started:** open **Apps → Library**, show the disabled apps, and choose
-**Enable** on **Code Review Sage** (see [Install](#install)).
+**Get started:** open **Apps → Library** and choose **Enable** on the **Code
+Review Sage** tile under **Disabled** (see [Install](#install)).
 
 ## The problem it solves
 
@@ -85,8 +85,9 @@ ones worth sending go to the pull request as a draft review when you choose
 starts switched off:
 
 1. In Kiro Crew, open **Apps → Library** in the left sidebar.
-2. Choose **Show N disabled apps** (N is how many apps are switched off).
-3. On the **Code Review Sage** tile, open the **⋯** menu and choose **Enable**.
+2. Find the **Code Review Sage** tile in the **Disabled** section, below the apps
+   that are already on.
+3. Choose **Enable** on the tile (it is also in the tile's **⋯** menu).
 4. **Code Review Sage** now appears under **Apps** in the sidebar.
 
 The copy that comes with Kiro Crew can also open a pull request's description,

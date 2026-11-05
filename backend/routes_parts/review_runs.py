@@ -589,6 +589,11 @@ async def _handle_runs(request: web.Request) -> web.Response:
     pool: dict | None = None
     try:
         pool = review_pool.pool_stats()
+        if not pool.get("runtime_alive"):
+            # With no batch in flight the pool's own cap is a default or the last
+            # batch's; the next review runs at the configured one, so show that.
+            # It reads config.json, hence off the loop.
+            pool["max"] = await asyncio.to_thread(review_pool.effective_max_concurrent)
     except Exception:  # pragma: no cover - defensive
         pool = None
     reviewer: dict | None = None

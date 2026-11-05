@@ -20,8 +20,10 @@ import { useSage } from '../context'
 import type { MainView } from '../lib/types'
 
 import { i18nT } from '../i18n'
-
-const APP_VERSION = '2.0'
+// The header names the version the manifest declares, so the page and the
+// listing can never show two different numbers. A named import: the bundle
+// carries this one string, not the manifest.
+import { version as APP_VERSION } from '../../../app.json'
 
 /** The three section destinations, in bar order.
  *
