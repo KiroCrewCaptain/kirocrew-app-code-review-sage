@@ -264,11 +264,17 @@ class TestTheManifest(unittest.TestCase):
                 self.assertTrue((APP_ROOT / skill / "SKILL.md").is_file())
 
     def test_the_skills_are_the_builtins_byte_for_byte(self) -> None:
-        """Pinned by digest: the reviewer's instructions are part of what adoption keeps."""
+        """Pinned by digest: the reviewer's instructions are part of what adoption keeps.
+
+        Line endings are normalized first: a Windows checkout with core.autocrlf
+        writes CRLF, and the root may hold no .gitattributes to stop it.
+        """
         import hashlib
 
         digests = {
-            skill: hashlib.sha256((APP_ROOT / skill / "SKILL.md").read_bytes()).hexdigest()
+            skill: hashlib.sha256(
+                (APP_ROOT / skill / "SKILL.md").read_bytes().replace(b"\r\n", b"\n")
+            ).hexdigest()
             for skill in _manifest()["skills"]
         }
         self.assertEqual(digests, _BUILTIN_SKILL_DIGESTS)
