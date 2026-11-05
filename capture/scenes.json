@@ -154,7 +154,7 @@
           ]
         }
       ],
-      "alt": "A finished review of two seed-swap pull requests: the Focus Report ranks both as Needs review and shows each one's design risk, blast radius and counts of blocking and should-fix findings"
+      "alt": "A finished Code Review Sage review of two fernleaf-garden/seed-swap pull requests: the Focus Report puts both under Needs review, #42 Cache the frost-date lookup per postcode with design risk high, blast radius MEDIUM, 3 blocking and 3 should-fix findings, and #43 Let members cancel a swap request with design risk medium, blast radius SMALL, 1 blocking and 4 should-fix, above a Draft 13 comments button"
     },
     {
       "name": "use-case-report",
@@ -187,7 +187,7 @@
           ]
         }
       ],
-      "alt": "placeholder"
+      "alt": "The same Focus Report with #42 Cache the frost-date lookup per postcode opened: its design gate reads Concerns, saying caching frost dates is the right idea but the cache holds failures forever, never expires, has no size limit and drops the request timeout, followed by the problem, why it matters and how well the solution fits"
     },
     {
       "name": "use-case-finding",
@@ -226,7 +226,7 @@
           ]
         }
       ],
-      "alt": "placeholder"
+      "alt": "Pull request #43 Let members cancel a swap request opened in the report: the ship-readiness summary says it is not ready to ship because any logged-in member can delete any other member's swap request, and the must-fix security finding below it points at seedswap/routes/swaps.py line 48 with its observation and the code it is about, next to a Draft this comment button"
     }
   ],
   "walkthrough": {

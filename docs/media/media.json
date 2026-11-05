@@ -1,0 +1,106 @@
+{
+  "app": "code-review-sage",
+  "captured_at": "2026-11-05T01:28:09Z",
+  "app_commit": "68f5100814c977bac4aba763d4dad0feea7794ac",
+  "kirocrew_commit": "55439d87700799a8789a341da65e2e1c355e26fc",
+  "kirocrew_tree_dirty": true,
+  "gateway": "isolated temporary home, approval=reads; a freshly seeded gateway for the stub screenshots and one for the walkthrough, whose live run the live screenshots were then taken on",
+  "data": "fictional, seeded through the app's HTTP API (capture/scenes.json)",
+  "agent_backend": {
+    "live": [
+      "hero",
+      "use-case-finding",
+      "use-case-report",
+      "walkthrough"
+    ],
+    "live_model": "the operator's own installed, signed-in kiro-cli over ACP with model \"auto\"; the replies on screen are that model's and vary from run to run",
+    "stub": "Kiro Crew's offline stub ACP backend (capture/stub_backend.py) for every other scene; no chat reply is shown from it",
+    "credit_reading": "the browser answers the top bar's credit readout (/api/sessions/usage) with \"no reading\", so no account balance or email can be shown"
+  },
+  "note": "The isolated gateway served this repository's own copy of the app: capture.py's setup installed it from this checkout (POST /api/apps/install), trusted it and enabled it, and every picture shows its committed bundle (ui/dist/index.mjs) and backend. Kiro Crew still ships a built-in code-review-sage and refuses a second install under the same name, so the Kiro Crew tree the capture ran on is the App Kit level-1 commit with only the built-in copy removed (src/kiro_crew/apps/builtins/code_review_sage and its BUILTIN_NAMES row); kirocrew_tree_dirty records that. GitHub was the capture's stand-in gh (capture/gh_stub), never the real one.",
+  "data_notes": [
+    "The GitHub in these pictures is invented: the fernleaf-garden organisation, its seed-swap and planting-calendar repositories, their pull requests, diffs and people, and the signed-in user sam-fernleaf are served by capture/gh_stub/gh from capture/gh_stub/data.json. None of them exists on GitHub, so the links lead nowhere.",
+    "The repositories were added and the review setting changed through the app's own API (capture/scenes.json setup); the review itself was started from the page in the recorded walkthrough.",
+    "Every finding, its wording and its count came from a live model reading those diffs during the capture, so they differ from run to run.",
+    "Reviews at once was set to 1 for the capture, so the two reviews ran one after the other.",
+    "The live stills (hero, use-case-report, use-case-finding) were taken on the walkthrough's own gateway after it was recorded, so they show the same review as the recording."
+  ],
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "device_scale": 2,
+  "screenshots": [
+    {
+      "file": "hero-dark.png",
+      "name": "hero",
+      "theme": "dark",
+      "bytes": 236271,
+      "width": 1600,
+      "height": 1000,
+      "alt": "A finished Code Review Sage review of two fernleaf-garden/seed-swap pull requests: the Focus Report puts both under Needs review, #42 Cache the frost-date lookup per postcode with design risk high, blast radius MEDIUM, 3 blocking and 3 should-fix findings, and #43 Let members cancel a swap request with design risk medium, blast radius SMALL, 1 blocking and 4 should-fix, above a Draft 13 comments button"
+    },
+    {
+      "file": "hero-light.png",
+      "name": "hero",
+      "theme": "light",
+      "bytes": 217913,
+      "width": 1600,
+      "height": 1000,
+      "alt": "A finished Code Review Sage review of two fernleaf-garden/seed-swap pull requests: the Focus Report puts both under Needs review, #42 Cache the frost-date lookup per postcode with design risk high, blast radius MEDIUM, 3 blocking and 3 should-fix findings, and #43 Let members cancel a swap request with design risk medium, blast radius SMALL, 1 blocking and 4 should-fix, above a Draft 13 comments button"
+    },
+    {
+      "file": "requests-light.png",
+      "name": "requests",
+      "theme": "light",
+      "bytes": 160948,
+      "width": 1600,
+      "height": 1000,
+      "alt": "The Requests tab: the two open pull requests that ask sam-fernleaf for a review, #43 Let members cancel a swap request in fernleaf-garden/seed-swap and #7 Show the frost dates on the month header in fernleaf-garden/planting-calendar"
+    },
+    {
+      "file": "use-case-finding-light.png",
+      "name": "use-case-finding",
+      "theme": "light",
+      "bytes": 374082,
+      "width": 1600,
+      "height": 1000,
+      "alt": "Pull request #43 Let members cancel a swap request opened in the report: the ship-readiness summary says it is not ready to ship because any logged-in member can delete any other member's swap request, and the must-fix security finding below it points at seedswap/routes/swaps.py line 48 with its observation and the code it is about, next to a Draft this comment button"
+    },
+    {
+      "file": "use-case-pick-light.png",
+      "name": "use-case-pick",
+      "theme": "light",
+      "bytes": 162602,
+      "width": 1600,
+      "height": 1000,
+      "alt": "The Code Review Sage page with the fernleaf-garden/seed-swap repository picked: its three open pull requests are listed (#42 Cache the frost-date lookup per postcode, #43 Let members cancel a swap request, #44 Fix a typo in the welcome email), #42 and #43 are ticked, and the Review 2 selected button is ready"
+    },
+    {
+      "file": "use-case-report-light.png",
+      "name": "use-case-report",
+      "theme": "light",
+      "bytes": 331018,
+      "width": 1600,
+      "height": 1000,
+      "alt": "The same Focus Report with #42 Cache the frost-date lookup per postcode opened: its design gate reads Concerns, saying caching frost dates is the right idea but the cache holds failures forever, never expires, has no size limit and drops the request timeout, followed by the problem, why it matters and how well the solution fits"
+    }
+  ],
+  "walkthrough": {
+    "shortened_waits_s": [
+      262.1
+    ],
+    "mp4": {
+      "file": "walkthrough.mp4",
+      "bytes": 527207
+    },
+    "gif": {
+      "file": "walkthrough.gif",
+      "bytes": 3862096,
+      "width": 960,
+      "fps": 10
+    },
+    "theme": "light",
+    "alt": "A walkthrough of Code Review Sage: picking the seed-swap repository, ticking two pull requests, starting the review, the progress panel while each pull request is reviewed in its own session, and the finished Focus Report with one pull request's findings opened"
+  }
+}
