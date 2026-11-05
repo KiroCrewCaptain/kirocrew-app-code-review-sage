@@ -630,11 +630,23 @@ def api_call(page: Any, method: str, path: str, body: Any) -> tuple[int, Any]:
     return int(result[0]), result[1]
 
 
-def run_setup(page: Any, scenes: dict[str, Any], app_root: Path) -> dict[str, Any]:
+def run_setup(
+    page: Any, scenes: dict[str, Any], app_root: Path, gateway_pass: str = "",
+    marked_only: bool = False,
+) -> dict[str, Any]:
     # ``{{app_root}}``: this repository's root, for a setup step that installs
     # the app from source (``POST /api/apps/install {"source": "{{app_root}}"}``).
     variables: dict[str, Any] = {"app_root": str(app_root)}
     for index, step in enumerate(scenes.get("setup", [])):
+        # ``"passes"``: run this step only on the named gateways
+        # (``screenshots``, ``screenshots-live``, ``walkthrough``), e.g. to start
+        # work a live agent picks up without starting it on the stub.
+        # ``marked_only``: a second round on a gateway already seeded runs only
+        # the steps that name this pass (``after-walkthrough``).
+        if "passes" in step and gateway_pass not in step["passes"]:
+            continue
+        if marked_only and "passes" not in step:
+            continue
         if "wait_ms" in step:
             # Rows the app timestamps to the second need a gap to sort predictably.
             page.wait_for_timeout(int(step["wait_ms"]))
@@ -783,7 +795,9 @@ def run_steps(
                 state="visible", timeout=int(step.get("timeout_ms", 15_000))
             )
         elif "wait_hidden" in step:
-            locate(page, step["wait_hidden"]).wait_for(state="hidden", timeout=15_000)
+            locate(page, step["wait_hidden"]).wait_for(
+                state="hidden", timeout=int(step.get("timeout_ms", 15_000))
+            )
         elif "wait_ms" in step:
             page.wait_for_timeout(int(step["wait_ms"]))
         elif "wait_reply" in step:
@@ -798,6 +812,24 @@ def run_steps(
                 step["caption"] or "", step.get("position", "bottom"), step.get("offset"),
                 step.get("over"), step.get("above"),
             ])
+        elif "upload" in step:
+            # Hand files to an <input type=file> (hidden ones too), as a drop or
+            # the file browser would. A relative path is under this repository.
+            root = Path(str(variables.get("app_root", ".")))
+            files = [str(f if Path(f).is_absolute() else root / f) for f in step.get("files", [])]
+            locate(page, step["upload"]).set_input_files(files, timeout=10_000)
+        elif "select_text" in step:
+            # Drag across one element's text with the real mouse, so the page
+            # sees the same selection and mouseup a person's drag produces.
+            target = move_to(page, step["select_text"], animate)
+            box = target.bounding_box()
+            if not box:
+                raise CaptureError(f"select_text: {step['select_text']!r} has no box")
+            y = box["y"] + min(box["height"] / 2, 10)
+            page.mouse.move(box["x"] + 2, y, steps=8 if animate else 1)
+            page.mouse.down()
+            page.mouse.move(box["x"] + box["width"] - 2, y, steps=24 if animate else 2)
+            page.mouse.up()
         elif "mouse_park" in step:
             # Move the pointer somewhere neutral so it does not cover content.
             x, y = step["mouse_park"]
@@ -971,10 +1003,15 @@ def _no_usage_reading(route: Any) -> None:
 def capture_screenshots(
     browser: Any, gateway: Gateway, scenes: dict[str, Any], variables: dict[str, Any],
     out_dir: Path, scratch: Path, ffmpeg_bin: str, only: set[str] | None,
+    session_cookies: list[Any] | None = None,
 ) -> list[dict[str, Any]]:
     written: list[dict[str, Any]] = []
     default_themes = scenes.get("themes", ["light", "dark"])
     forbidden = list(DEFAULT_FORBIDDEN_TEXT) + list(scenes.get("forbid_text", []))
+    # The session the first sign-in got (or the caller's). A later theme's
+    # context reuses it: a long live pass can outlast the gateway's one-time
+    # sign-in token.
+    session_cookies = list(session_cookies or [])
     for theme in ("light", "dark"):
         shots = [
             s for s in scenes["screenshots"]
@@ -984,10 +1021,26 @@ def capture_screenshots(
             continue
         context = new_context(browser, scenes, theme)
         try:
-            page = sign_in(context, gateway)
+            if session_cookies:
+                context.add_cookies(session_cookies)
+                page = context.new_page()
+                page.goto(f"{gateway.base_url}/", wait_until="load", timeout=60_000)
+                # The dashboard may route itself once on load; let it finish
+                # before the theme call evaluates in the page.
+                page.wait_for_load_state("networkidle", timeout=60_000)
+                settle(page, scenes.get("ready"), 400)
+            else:
+                page = sign_in(context, gateway)
+                session_cookies = context.cookies()
             apply_theme(page, scenes, theme)
-            for shot in shots:
+            for index, shot in enumerate(shots):
                 where = f"{shot['name']} ({theme})"
+                if shot.get("fresh_page") and index:
+                    # A new browser profile: nothing the previous shot left in
+                    # the page's own storage (a history list, a last view) shows.
+                    context.close()
+                    context = new_context(browser, scenes, theme)
+                    page = sign_in(context, gateway)
                 page.goto(gateway.base_url + substitute(shot["path"], variables), wait_until="load")
                 settle(page, shot.get("ready") or scenes.get("ready"), 400)
                 run_steps(page, shot.get("steps", []), variables, animate=False)
@@ -1014,8 +1067,9 @@ def capture_screenshots(
 
 def capture_walkthrough(
     browser: Any, gateway: Gateway, scenes: dict[str, Any], variables: dict[str, Any],
-    out_dir: Path, scratch: Path, ffmpeg_bin: str,
+    out_dir: Path, scratch: Path, ffmpeg_bin: str, session_out: list[Any] | None = None,
 ) -> dict[str, Any] | None:
+    """Record the walkthrough. ``session_out`` receives the signed-in cookies."""
     walk = scenes.get("walkthrough")
     if not walk:
         return None
@@ -1028,6 +1082,8 @@ def capture_walkthrough(
     try:
         apply_theme(sign_in(login, gateway), scenes, theme)
         state = login.storage_state()
+        if session_out is not None:
+            session_out.extend(login.cookies())
     finally:
         login.close()
     video_dir = scratch / "video"
@@ -1108,6 +1164,20 @@ def main(argv: list[str]) -> int:
         if args.only == "walkthrough":
             live_shots = stub_shots = set()
         walk_live = bool((scenes.get("walkthrough") or {}).get("live"))
+        # ``"live_stills_from_walkthrough"``: the live stills are taken on the
+        # walkthrough's own gateway after it is recorded, so the pictures and
+        # the recording show the same live run (the same findings, the same
+        # report) instead of two runs of a model that answers differently.
+        stills_after_walk = bool(scenes.get("live_stills_from_walkthrough")) and walk_live
+        if stills_after_walk and live_shots and args.only == "screenshots":
+            raise CaptureError(
+                "scenes.json takes the live stills from the walkthrough's run; "
+                "capture them with --only all"
+            )
+        if stills_after_walk and args.only == "all":
+            after_walk_shots, live_shots = live_shots, set()
+        else:
+            after_walk_shots = set()
         needs_live = not args.serve and (
             bool(live_shots) or (args.only in ("all", "walkthrough") and walk_live)
         )
@@ -1141,7 +1211,7 @@ def main(argv: list[str]) -> int:
             try:
                 seed_ctx = new_context(browser, scenes, "light", device_scale_factor=1)
                 try:
-                    variables = run_setup(sign_in(seed_ctx, gw), scenes, app_root)
+                    variables = run_setup(sign_in(seed_ctx, gw), scenes, app_root, label)
                 finally:
                     seed_ctx.close()
                 yield gw, browser, variables
@@ -1175,9 +1245,31 @@ def main(argv: list[str]) -> int:
                     )
             if args.only in ("all", "walkthrough"):
                 with seeded(pw, "walkthrough", walk_live) as (gw, browser, variables):
+                    session: list[Any] = []
                     walkthrough = capture_walkthrough(
-                        browser, gw, scenes, variables, out_dir, scratch, ffmpeg_bin
+                        browser, gw, scenes, variables, out_dir, scratch, ffmpeg_bin, session
                     )
+                    if after_walk_shots:
+                        # Steps marked for the ``after-walkthrough`` pass add what
+                        # the stills show beside the recorded run.
+                        ctx = new_context(browser, scenes, "light", device_scale_factor=1)
+                        try:
+                            ctx.add_cookies(session)
+                            page = ctx.new_page()
+                            page.goto(f"{gw.base_url}/", wait_until="load", timeout=60_000)
+                            # The dashboard may route itself once on load; a
+                            # fetch evaluated mid-navigation fails.
+                            page.wait_for_load_state("networkidle", timeout=60_000)
+                            settle(page, scenes.get("ready"), 400)
+                            variables.update(
+                                run_setup(page, scenes, app_root, "after-walkthrough", True)
+                            )
+                        finally:
+                            ctx.close()
+                        shots += capture_screenshots(
+                            browser, gw, scenes, variables, out_dir, scratch, ffmpeg_bin,
+                            after_walk_shots, session,
+                        )
         walkthrough_name = (scenes.get("walkthrough") or {}).get("name", "walkthrough")
         live_names = sorted(
             {s["name"] for s in scenes["screenshots"] if s.get("live")}
@@ -1202,9 +1294,15 @@ def main(argv: list[str]) -> int:
             "app_commit": git_head(Path(__file__).resolve().parent.parent),
             "kirocrew_commit": git_head(kirocrew),
             "kirocrew_tree_dirty": git_dirty(kirocrew),
-            "gateway": "isolated temporary home, approval=reads; a freshly seeded gateway "
-                       "for the stub screenshots, one for the live ones and one for the "
-                       "walkthrough",
+            "gateway": (
+                "isolated temporary home, approval=reads; a freshly seeded gateway for "
+                "the stub screenshots and one for the walkthrough, whose live run the "
+                "live screenshots were then taken on"
+                if after_walk_shots else
+                "isolated temporary home, approval=reads; a freshly seeded gateway "
+                "for the stub screenshots, one for the live ones and one for the "
+                "walkthrough"
+            ),
             "data": "fictional, seeded through the app's HTTP API (capture/scenes.json)",
             "agent_backend": {
                 "live": live_names,

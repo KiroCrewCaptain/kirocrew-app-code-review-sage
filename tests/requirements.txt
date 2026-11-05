@@ -1,0 +1,16 @@
+# Test-only dependencies, pinned. Deliberately NOT at the repository root: a root
+# requirements.txt makes a Kiro Crew registry install run pip into the gateway's
+# interpreter (and is refused outright on the desktop build). At runtime the app
+# needs only the stdlib and aiohttp, which the gateway already provides, and the
+# gateway itself.
+#
+# Kiro Crew is a TEST dependency here, pinned to one commit of its public source:
+# a review drives the host's ACP runtime, its tool-permission floor, its security
+# event log and its GitHub runner, and the suite exercises those real
+# collaborators the way the built-in's suite did. The app's code still imports
+# none of it at module level (tests/test_no_host_imports.py); it reaches the host
+# only through sage_lib/_host.py and backend/_host.py, by name, at call time.
+aiohttp==3.14.3
+pytest==9.0.3
+pytest-asyncio==0.21.2
+kirocrew @ https://github.com/kirodotdev/KiroCrew/archive/55439d87700799a8789a341da65e2e1c355e26fc.tar.gz

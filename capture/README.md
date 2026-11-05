@@ -8,7 +8,8 @@ exactly as a user sees it. It is driven by one file per app, `scenes.json`.
 |---|---|
 | `capture.py` | The harness: boots the gateway, seeds data, takes the pictures, records the video |
 | `stub_backend.py` | The offline model stand-in a gateway runs for scenes that show no chat reply: Kiro Crew's stub ACP backend |
-| `scenes.json` | This app's demo data, screenshots and walkthrough script (start from `scenes.example.json`) |
+| `gh_stub/` | The fictional GitHub the pictures show: a stand-in `gh` (`gh_stub/gh`) and its data (`gh_stub/data.json`, written by `gh_stub/make_data.py`) |
+| `scenes.json` | This app's demo data, screenshots and walkthrough script |
 | `check_readme.py` | Checks README.md against the standard in `CHECKLIST.md` (CI runs it) |
 
 ## What one run does
@@ -43,7 +44,10 @@ exactly as a user sees it. It is driven by one file per app, `scenes.json`.
    `KIROCREW_HOME` is dropped before the gateway starts. The stub screenshots,
    the live screenshots and the walkthrough each get **their own freshly seeded
    gateway**, so the recording never shows a chat a screenshot opened, and no
-   still shows what the recording clicked.
+   still shows what the recording clicked. The one exception is opt-in:
+   with `"live_stills_from_walkthrough": true` the live screenshots are taken
+   on the walkthrough's gateway after it is recorded, because a live model
+   answers differently on every run and the stills must agree with the video.
 2. **Signs a headless Chromium in** with the gateway's one-time token, then runs
    the `setup` calls from `scenes.json` with `fetch()` from inside the page, the
    same way the dashboard calls the app's API. Demo data therefore goes through
@@ -121,9 +125,28 @@ no machine-specific path goes into `scenes.json`:
 {"name": "turn it on", "method": "POST", "path": "/api/apps/my-app/enable"}
 ```
 
-`scenes.example.json` carries the same steps under
-`setup_when_not_built_in`. Say which copy was photographed in
-`"provenance_note"`, which is copied into `media.json`.
+This app's `scenes.json` runs those steps in `setup`, so the pictures show this
+repository's bundle and backend, not the built-in copy. While Kiro Crew still
+ships a built-in `code-review-sage`, the install step is refused on a stock
+checkout (`app 'code-review-sage' is already installed`), so capture on a Kiro
+Crew tree that carries App Kit level 1 with the built-in removed: its package
+and its `BUILTIN_NAMES` row (nothing in Kiro Crew imports it at boot):
+
+```bash
+git -C /path/to/KiroCrew worktree add --detach /tmp/kc-capture <level-1 commit>
+cd /tmp/kc-capture
+git rm -rq src/kiro_crew/apps/builtins/code_review_sage && git reset -q
+sed -i '/^    "code_review_sage",$/d' src/kiro_crew/apps/builtins/__init__.py
+# then build and stage the dashboard as above, and pass --kirocrew /tmp/kc-capture
+```
+
+`media.json` then records `kirocrew_tree_dirty: true`. Say which copy was
+photographed in `"provenance_note"`, which is copied into `media.json`.
+
+A campaign is driven by the live research agent, so the live scenes wait for
+real research cycles (`wait_for` with a long `timeout_ms`, and `"cut": true` in
+the recording). Expect a live run to take tens of minutes and to use some of
+your Kiro credits.
 
 ## `scenes.json` reference
 
@@ -139,13 +162,16 @@ no machine-specific path goes into `scenes.json`:
 | `data_notes` | List of facts about the demo data a reader of `media.json` should know (for example, dates the app stamps itself) |
 | `settle_hidden` | Extra selectors that must be gone before a frame is taken (`.animate-spin` always is) |
 | `theme_api` | Override for the theme switch call (default `PUT /api/config/theme {"mode": "{{theme}}"}`) |
-| `setup` | Ordered HTTP calls: `method`, `path`, `body`, `expect` (status list), `save` (`{"var": "dotted.path.in.response"}`), `optional`; or `{"wait_ms": n}` |
+| `setup` | Ordered HTTP calls: `method`, `path`, `body`, `expect` (status list), `save` (`{"var": "dotted.path.in.response"}`), `optional`, `passes` (run only on these gateways: `screenshots`, `screenshots-live`, `walkthrough`, or `after-walkthrough`, a second round on the walkthrough's gateway once it is recorded); or `{"wait_ms": n}` |
+| `live_stills_from_walkthrough` | `true`: take the `live` screenshots on the walkthrough's gateway after the recording (with `--only all`), so the stills and the recording show the same live run instead of two runs of a model that answers differently |
 | `screenshots` | List of shots (below) |
 | `walkthrough` | One recorded flow (below) |
 
 A **screenshot** has `name` (kebab-case; the file is `<name>-<theme>.png`),
 `path`, `alt` (required), `themes` (default both), `ready`, `steps`,
-`ready_after` (selector to wait for after the steps), `settle_ms`, `clip`
+`ready_after` (selector to wait for after the steps), `settle_ms`, `clip`, `fresh_page`
+(`true`: a new browser profile for this shot, so nothing an earlier shot left in the
+page's own storage shows)
 (selector: capture only that element), `forbid_text`, `settle_hidden` and
 `live` (`true`: run against the real model, see above).
 
@@ -174,6 +200,8 @@ after every live capture.
 | `{"wait_ms": 800}` | Pause (only to let a viewer read, never as a barrier) |
 | `{"scroll": SEL}` | Scroll an element into view |
 | `{"caption": "...", "position": "bottom"}` | Show a caption pill (`"top"` or `"bottom"`, `offset` px from that edge); `"over": SEL` centres it on that element, `"above": SEL` sits it `offset` px above that element; `""` hides it |
+| `{"upload": SEL, "files": ["capture/fixtures/a.png"]}` | Hand files to an `<input type=file>` (hidden or not), as choosing them would; relative paths are under this repository |
+| `{"select_text": SEL}` | Drag across that element's text with the mouse, selecting it as a person would |
 | `{"mouse_park": [x, y]}` | Move the pointer out of the way |
 
 Selectors are Playwright selectors: `text=...`, `role=radio[name='History']`,
@@ -202,3 +230,35 @@ agent said in the new files and make the `alt` text, the captions and the
 README say only that. Keep captions in one place per kind of screen (bottom of the page; above
 the message box in a chat) and hide them while the result the viewer should read
 is on screen. Then run `python capture/check_readme.py`.
+
+## Code Review Sage's demo GitHub
+
+Code Review Sage reads GitHub through the `gh` CLI, and so does the review
+worker it starts. A capture must never show a real account, repository or pull
+request, so every run puts a stand-in in front of the real `gh`:
+
+```bash
+mkdir -m 700 -p /tmp/empty-gh-config
+env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR=/tmp/empty-gh-config \
+  KIROCREW_SAGE_GH="$PWD/capture/gh_stub/gh" \
+  PATH="$PWD/capture/gh_stub:$PATH" \
+  python capture/capture.py --kirocrew /tmp/kc-capture
+```
+
+- `KIROCREW_SAGE_GH` is the app's own override for the `gh` it runs (validated
+  by Kiro Crew like any other `gh`), so repository and pull-request lists come
+  from the stand-in.
+- The stand-in's directory leads `PATH`, so the review worker's shell finds it
+  before any installed `gh`.
+- `GH_CONFIG_DIR` points at an empty folder and the token variables are
+  dropped, so even a real `gh` reached by some other path has no sign-in.
+
+The stand-in (`gh_stub/gh`) answers only from `gh_stub/data.json`: the invented
+`fernleaf-garden` organisation, its `seed-swap` and `planting-calendar`
+repositories, four open pull requests with their diffs, and the signed-in user
+`sam-fernleaf`. It reads nothing else, writes nothing and opens no socket.
+The organisation, repositories and people do not exist on GitHub (checked when
+the data was written), so the pull-request links in the pictures lead nowhere.
+Edit the pull requests in `gh_stub/make_data.py` and run it to regenerate the
+data. The reviews themselves come from the live model reading those diffs.
+

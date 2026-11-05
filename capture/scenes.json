@@ -1,0 +1,92 @@
+{
+  "app": "code-review-sage",
+  "fixture": "minimal",
+  "locale": "en-US",
+  "timezone": "UTC",
+  "init_storage": {
+    "mc-nav": "0"
+  },
+  "ready": "text=Code Review Sage",
+  "forbid_text": [],
+  "setup": [
+    {
+      "name": "install this repository",
+      "method": "POST",
+      "path": "/api/apps/install",
+      "body": {
+        "source": "{{app_root}}"
+      }
+    },
+    {
+      "name": "trust it (it runs its own code)",
+      "method": "POST",
+      "path": "/api/security/trusted-apps/code-review-sage"
+    },
+    {
+      "name": "turn the app on",
+      "method": "POST",
+      "path": "/api/apps/code-review-sage/enable"
+    },
+    {
+      "name": "retire the host's one-time startup intro",
+      "method": "POST",
+      "path": "/api/feature-videos/feedback",
+      "body": {
+        "id": "crewmates",
+        "status": "dismissed"
+      },
+      "optional": true
+    },
+    {
+      "name": "pin the demo repository",
+      "method": "POST",
+      "path": "/api/apps/code-review-sage/repos",
+      "body": {
+        "owner": "fernleaf-garden",
+        "repo": "seed-swap"
+      }
+    },
+    {
+      "name": "review two pull requests on the live model",
+      "method": "POST",
+      "path": "/api/apps/code-review-sage/review",
+      "body": {
+        "changes": [
+          "https://github.com/fernleaf-garden/seed-swap/pull/42",
+          "https://github.com/fernleaf-garden/seed-swap/pull/43"
+        ]
+      },
+      "save": {
+        "run_id": "run_id"
+      },
+      "passes": [
+        "screenshots-live"
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "start",
+      "path": "/apps/code-review-sage",
+      "themes": [
+        "light"
+      ],
+      "alt": "probe"
+    },
+    {
+      "name": "probe-live",
+      "live": true,
+      "path": "/apps/code-review-sage?run={{run_id}}",
+      "themes": [
+        "light"
+      ],
+      "steps": [
+        {
+          "wait_for": "text=/changes? reviewed/",
+          "timeout_ms": 1500000
+        }
+      ],
+      "alt": "probe"
+    }
+  ]
+}

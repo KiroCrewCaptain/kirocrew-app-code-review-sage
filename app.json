@@ -1,0 +1,211 @@
+{
+  "name": "code-review-sage",
+  "version": "0.9.3",
+  "displayName": "Code Review Sage",
+  "description": "Deep-reviews GitHub pull requests and tells you which changes actually deserve your attention. Each pull request is reviewed in its own isolated agent session that covers every changed file, weighted by how much blast radius it carries, and rolled up into a prioritized Focus Report. Findings are read in the app and staged as a draft GitHub review only when you publish them or turn on automatic posting, and the reviewer keeps learning your repository's real standards from shipped fixes and past review comments.",
+  "author": "kirocrew",
+  "license": "Apache-2.0",
+  "minKiroCrewVersion": "0.13.0",
+  "tags": [
+    "code-review",
+    "learning",
+    "developer-tools",
+    "github"
+  ],
+  "highlights": [
+    "Focus Report ranks changes by blast radius so the risky files get read first",
+    "One isolated agent session per pull request, so findings never bleed between reviews",
+    "Reviews are read in the app — nothing is posted to your pull request unless you ask",
+    "Learns per-repository from shipped fixes, review comments, and design discussions",
+    "Reviews GitHub pull requests; needs an authenticated `gh` CLI on the gateway host"
+  ],
+  "defaultEnabled": false,
+  "platform": {
+    "os": [
+      "macos",
+      "linux",
+      "windows"
+    ]
+  },
+  "iconPath": "assets/icon.png",
+  "heroImage": "assets/hero-light.png",
+  "heroImageDark": "assets/hero-dark.png",
+  "heroImageDetail": "assets/hero-detail-light.png",
+  "heroImageDetailDark": "assets/hero-detail-dark.png",
+  "skills": [
+    "skills/sage-review",
+    "skills/learn-from-sage"
+  ],
+  "permissions": {
+    "api": [
+      "/api/apps/code-review-sage",
+      "/api/apps/code-review-sage/*"
+    ],
+    "network": true,
+    "storage": true
+  },
+  "dependencies": {
+    "commands": [
+      "gh"
+    ]
+  },
+  "backend": {
+    "hooks": {
+      "routes": "backend.entry:register_routes",
+      "on_startup": "backend.entry:on_startup",
+      "on_shutdown": "backend.entry:on_shutdown"
+    }
+  },
+  "ui": {
+    "entry": "dist/index.mjs",
+    "pages": [
+      {
+        "route": "/apps/code-review-sage",
+        "label": "Code Review Sage"
+      }
+    ]
+  },
+  "useCases": [
+    "Review one or many GitHub pull requests by risk, inspect focused findings, and stage only the comments worth publishing."
+  ],
+  "configuration": [
+    "Install and authenticate the gh CLI on the gateway host, add a repository, then choose the review model, reasoning effort, and concurrency in Settings."
+  ],
+  "screenshots": [
+    "assets/screenshot-main.png"
+  ],
+  "l10n": {
+    "bn": {
+      "displayName": "Code Review Sage",
+      "description": "GitHub পুল রিকোয়েস্ট গভীরভাবে রিভিউ করে আর জানায় কোন বদলগুলো সত্যিই তোমার নজর পাওয়ার যোগ্য। প্রতিটি পুল রিকোয়েস্ট আলাদা, বিচ্ছিন্ন এজেন্ট সেশনে রিভিউ হয় এবং বদলে যাওয়া প্রতিটি ফাইল তাতে দেখা হয় — কতটা ঝুঁকি ছড়াতে পারে সেই অনুযায়ী গুরুত্ব পায় — আর সব মিলিয়ে একটি অগ্রাধিকার-সাজানো Focus Report তৈরি হয়। ফলাফল অ্যাপেই পড়া হয়, আর তুমি প্রকাশ করলে বা স্বয়ংক্রিয় পোস্টিং চালু করলে তবেই একটি খসড়া GitHub রিভিউ হিসেবে জমা হয়; আর রিভিউয়ার শিপ হওয়া ফিক্স ও আগের রিভিউ কমেন্ট থেকে তোমার রিপোজিটরির আসল মানদণ্ড শিখতে থাকে।",
+      "pageLabel": "Code Review Sage",
+      "highlights": [
+        "Focus Report ঝুঁকির বিস্তার অনুযায়ী বদলগুলোকে সাজায়, যাতে ঝুঁকিপূর্ণ ফাইল আগে পড়া হয়",
+        "প্রতি পুল রিকোয়েস্টের জন্য একটি বিচ্ছিন্ন এজেন্ট সেশন, তাই ফলাফল কখনও এক রিভিউ থেকে অন্য রিভিউতে মিশে যায় না",
+        "পর্যালোচনাগুলি অ্যাপেই পড়া হয় — আপনি না বললে আপনার পুল রিকোয়েস্টে কিছুই পোস্ট করা হয় না",
+        "শিপ হওয়া ফিক্স, রিভিউ কমেন্ট ও ডিজাইন আলোচনা থেকে প্রতিটি রিপোজিটরির জন্য আলাদাভাবে শেখে",
+        "GitHub পুল রিকোয়েস্ট রিভিউ করে; গেটওয়ে হোস্টে একটি অথেনটিকেটেড `gh` CLI দরকার"
+      ]
+    },
+    "de": {
+      "displayName": "Code Review Sage",
+      "description": "Prüft Pull Requests auf GitHub in der Tiefe und sagt dir, welche Änderungen wirklich deine Aufmerksamkeit verdienen. Jeder Pull-Request wird in einer eigenen, isolierten Agentensitzung überprüft, die jede geänderte Datei abdeckt, nach ihrer möglichen Wirkungsbreite gewichtet und zu einem priorisierten Fokusbericht zusammengefasst. Ergebnisse liest du in der App; als Entwurf einer Überprüfung auf GitHub werden sie nur vorbereitet, wenn du sie veröffentlichst oder automatisches Posten aktivierst, und der Prüfer lernt fortlaufend die echten Standards deines Repositorys aus ausgelieferten Korrekturen und früheren Review-Kommentaren.",
+      "pageLabel": "Code Review Sage",
+      "highlights": [
+        "Der Fokusbericht sortiert Änderungen nach Wirkungsbreite, damit die riskanten Dateien zuerst gelesen werden",
+        "Eine isolierte Agentensitzung pro Pull-Request, damit Ergebnisse nie zwischen Überprüfungen verschwimmen",
+        "Reviews werden in der App gelesen – es wird nichts an deinen Pull Request gepostet, sofern du es nicht anforderst",
+        "Lernt pro Repository aus ausgelieferten Korrekturen, Review-Kommentaren und Design-Diskussionen",
+        "Überprüft Pull Requests auf GitHub; benötigt eine authentifizierte `gh` CLI auf dem Gateway-Host"
+      ]
+    },
+    "es": {
+      "displayName": "Code Review Sage",
+      "description": "Revisa a fondo las pull requests de GitHub y te dice qué cambios merecen de verdad tu atención. Cada pull request se revisa en su propia sesión de agente aislada que cubre todos los archivos modificados, ponderada por el alcance del impacto que tiene, y todo se resume en un informe de enfoque priorizado. Los hallazgos se leen en la app y solo se preparan como una revisión de GitHub en borrador cuando los publicas o activas la publicación automática, y el revisor sigue aprendiendo los estándares reales de tu repositorio a partir de correcciones ya integradas y comentarios de revisiones anteriores.",
+      "pageLabel": "Code Review Sage",
+      "highlights": [
+        "El informe de enfoque ordena los cambios por alcance del impacto, así los archivos riesgosos se leen primero",
+        "Una sesión de agente aislada por pull request, así los hallazgos nunca se filtran entre revisiones",
+        "Las revisiones se leen en la aplicación: no se publica nada en tu pull request a menos que lo pidas",
+        "Aprende por repositorio a partir de correcciones ya integradas, comentarios de revisión y discusiones de diseño",
+        "Revisa pull requests de GitHub; necesita una CLI `gh` autenticada en el host del gateway"
+      ]
+    },
+    "fr": {
+      "displayName": "Code Review Sage",
+      "description": "Examine en profondeur les pull requests GitHub et te dit quelles modifications méritent vraiment ton attention. Chaque pull request est relue dans sa propre session d’agent isolée qui couvre tous les fichiers modifiés, pondérés par l’ampleur de son rayon d’impact, puis consolidé dans un rapport de focus priorisé. Les conclusions se lisent dans l’application et ne sont préparées sous forme de revue GitHub en brouillon que lorsque tu les publies ou actives la publication automatique, et le relecteur continue d’apprendre les vraies normes de ton dépôt à partir des correctifs livrés et des commentaires de revue passés.",
+      "pageLabel": "Code Review Sage",
+      "highlights": [
+        "Le rapport de focus classe les modifications par rayon d’impact, pour lire d’abord les fichiers risqués",
+        "Une session d’agent isolée par pull request, pour que les conclusions ne débordent jamais d’une revue à l’autre",
+        "Les revues se lisent dans l’application : rien n’est publié sur votre pull request sans votre demande",
+        "Apprend dépôt par dépôt à partir des correctifs livrés, des commentaires de revue et des discussions de conception",
+        "Relit les pull requests GitHub ; nécessite une CLI `gh` authentifiée sur l’hôte du gateway"
+      ]
+    },
+    "hi": {
+      "displayName": "Code Review Sage",
+      "description": "GitHub पुल रिक्वेस्ट की गहरी समीक्षा करता है और बताता है कि किन बदलावों पर असल में ध्यान देने की ज़रूरत है। हर पुल रिक्वेस्ट की समीक्षा अपने अलग एजेंट सेशन में होती है, जो हर बदली हुई फ़ाइल को देखता है, उसके असर के दायरे के हिसाब से वज़न मिलता है, और सब कुछ प्राथमिकता वाली Focus Report में जुड़ जाता है। नतीजे ऐप में पढ़े जाते हैं और ड्राफ़्ट GitHub समीक्षा के रूप में तभी तैयार होते हैं जब तुम उन्हें प्रकाशित करो या स्वचालित पोस्टिंग चालू करो, और समीक्षक शिप हुए फ़िक्स और पुरानी समीक्षा टिप्पणियों से तुम्हारी रिपॉज़िटरी के असली मानक सीखता रहता है।",
+      "pageLabel": "Code Review Sage",
+      "highlights": [
+        "Focus Report बदलावों को असर के दायरे से क्रम देती है, ताकि जोखिम वाली फ़ाइलें पहले पढ़ी जाएँ",
+        "हर पुल रिक्वेस्ट के लिए एक अलग एजेंट सेशन, ताकि नतीजे समीक्षाओं के बीच कभी न मिलें",
+        "समीक्षाएँ ऐप में ही पढ़ी जाती हैं — जब तक तुम न कहो, तुम्हारे पुल रिक्वेस्ट पर कुछ भी पोस्ट नहीं किया जाता",
+        "हर रिपॉज़िटरी के लिए शिप हुए फ़िक्स, समीक्षा टिप्पणियों और डिज़ाइन चर्चाओं से सीखता है",
+        "GitHub पुल रिक्वेस्ट की समीक्षा करता है; गेटवे होस्ट पर प्रमाणित `gh` CLI चाहिए"
+      ]
+    },
+    "it": {
+      "displayName": "Code Review Sage",
+      "description": "Analizza in profondità le pull request di GitHub e ti dice quali modifiche meritano davvero attenzione. Ogni pull request viene revisionata in una sessione di agente isolata che copre tutti i file modificati, pesati in base al raggio d’impatto che ha, e tutto viene riunito in un report di focus con le priorità. I rilievi si leggono nell’app e vengono preparati come revisione GitHub in bozza solo quando li pubblichi o attivi la pubblicazione automatica, e il revisore continua a imparare gli standard reali del tuo repository dalle correzioni già rilasciate e dai commenti di revisione passati.",
+      "pageLabel": "Code Review Sage",
+      "highlights": [
+        "Il report di focus ordina le modifiche per raggio d’impatto, così i file rischiosi vengono letti per primi",
+        "Una sessione di agente isolata per ogni pull request, così i rilievi non si mescolano mai tra revisioni",
+        "Le revisioni si leggono nell’app: nulla viene pubblicato nella tua pull request se non lo chiedi",
+        "Impara per singolo repository dalle correzioni rilasciate, dai commenti di revisione e dalle discussioni di design",
+        "Revisiona le pull request di GitHub; richiede una CLI `gh` autenticata sull’host del gateway"
+      ]
+    },
+    "ja": {
+      "displayName": "Code Review Sage",
+      "description": "GitHub pull requestsの詳細確認を行い、実際に注目する価値のある変更を示します。各プルリクエストは独自の分離されたエージェントセッションで確認され、変更されたすべてのファイルが対象になり、持っているブラスト半径の量で加重され、優先度付きフォーカスレポートにロールアップされます。検出結果はアプリ内で読み、公開するか自動投稿を有効にした場合にのみドラフト GitHub レビューとしてステージングされ、確認者は出荷されたフィックスと過去のレビューコメントからリポジトリの真の標準を学び続けます。",
+      "pageLabel": "Code Review Sage",
+      "highlights": [
+        "フォーカスレポートはブラスト半径によって変更をランク付けするため、リスクの高いファイルが最初に読み取られます",
+        "プルリクエストごとに1つの分離されたエージェントセッションなので、検出結果がレビュー間で流出しません",
+        "保留中(ドラフト)の GitHub レビューとして投稿 — あなたが送信する1つです",
+        "配布されたフィックス、レビューコメント、設計ディスカッションからリポジトリごとに学習します",
+        "GitHub pull requestsを確認します; ゲートウェイホストで認証された`gh` CLIが必要です"
+      ]
+    },
+    "ko": {
+      "displayName": "Code Review Sage",
+      "description": "GitHub pull request를 심층 리뷰하고 실제로 주의를 기울일 가치가 있는 변경 사항을 알려 줍니다. 각 풀 리퀘스트는 변경된 모든 파일을 다루는 격리된 에이전트 세션에서 리뷰되고, 영향 범위에 따라 가중치가 매겨져 우선순위가 정해진 포커스 리포트로 정리됩니다. 발견 사항은 앱에서 읽으며, 사용자가 게시하거나 자동 게시를 켤 때만 초안 GitHub 리뷰로 준비되고, 리뷰어는 반영된 수정과 과거 리뷰 댓글에서 저장소의 실제 기준을 계속 학습합니다.",
+      "pageLabel": "Code Review Sage",
+      "highlights": [
+        "포커스 리포트가 영향 범위에 따라 변경 사항의 순위를 매겨 위험한 파일부터 읽게 합니다",
+        "풀 리퀘스트마다 격리된 에이전트 세션 하나씩 — 발견 사항이 리뷰 간에 섞이지 않습니다",
+        "리뷰는 앱 안에서 읽습니다 — 요청하지 않는 한 풀 리퀘스트에는 아무것도 게시되지 않습니다",
+        "반영된 수정·리뷰 댓글·설계 논의에서 저장소별로 학습합니다",
+        "GitHub pull request를 리뷰합니다. 게이트웨이 호스트에 인증된 `gh` CLI가 필요합니다"
+      ]
+    },
+    "pt": {
+      "displayName": "Code Review Sage",
+      "description": "Faz uma revisão profunda de pull requests do GitHub e diz quais alterações realmente merecem a sua atenção. Cada pull request é revisado em uma sessão de agente isolada que cobre todos os arquivos alterados, ponderados pelo raio de impacto que carrega, e tudo é consolidado em um Focus Report priorizado. As descobertas são lidas no app e só são preparadas como uma revisão rascunho no GitHub quando você as publica ou ativa a publicação automática, e o revisor continua aprendendo os padrões reais do seu repositório a partir de correções já entregues e de comentários de revisões anteriores.",
+      "pageLabel": "Code Review Sage",
+      "highlights": [
+        "O Focus Report classifica as alterações por raio de impacto, para os arquivos arriscados serem lidos primeiro",
+        "Uma sessão de agente isolada por pull request, para que as descobertas nunca vazem entre revisões",
+        "As revisões são lidas no app — nada é publicado no seu pull request a menos que você peça",
+        "Aprende por repositório com correções entregues, comentários de revisão e discussões de design",
+        "Revisa pull requests do GitHub; precisa de uma CLI `gh` autenticada no host do gateway"
+      ]
+    },
+    "ru": {
+      "displayName": "Code Review Sage",
+      "description": "Глубоко проверяет пул-реквесты GitHub и подсказывает, какие изменения действительно стоят внимания. Каждый pull request проверяется в отдельной изолированной сессии агента, которая охватывает все изменённые файлы, с учётом того, насколько велик его радиус влияния, а итог собирается в Отчёт по фокусу с расстановкой приоритетов. Замечания читаются в приложении и готовятся как черновой отзыв GitHub, только когда ты их публикуешь или включаешь автопубликацию, а проверяющий постепенно узнаёт реальные стандарты репозитория по уже принятым исправлениям и прошлым комментариям к ревью.",
+      "pageLabel": "Code Review Sage",
+      "highlights": [
+        "Отчёт по фокусу сортирует изменения по радиусу влияния, чтобы рискованные файлы читались первыми",
+        "Одна изолированная сессия агента на pull request, чтобы замечания не перетекали между ревью",
+        "Отзывы читаются в приложении — ничего не публикуется в вашем pull request, пока вы сами об этом не попросите",
+        "Учится по каждому репозиторию отдельно: на принятых исправлениях, комментариях к ревью и обсуждениях дизайна",
+        "Проверяет пул-реквесты GitHub; нужен аутентифицированный `gh` CLI на хосте шлюза"
+      ]
+    },
+    "zh-CN": {
+      "displayName": "Code Review Sage",
+      "description": "深度审查 GitHub 拉取请求，告诉你哪些改动真正值得关注。每个拉取请求都在各自独立的代理会话里审查，覆盖所有改动过的文件，按影响范围加权，最后按优先级汇总成一份 Focus Report。发现在应用内阅读，只有在你发布或开启自动发布时才会暂存为 GitHub 草稿审查；审查者还会从已上线的修复和过往审查评论里，不断学习仓库真正的标准。",
+      "pageLabel": "Code Review Sage",
+      "highlights": [
+        "Focus Report 按影响范围给改动排序，风险高的文件先读",
+        "每个拉取请求一个独立的代理会话，发现不会在审查之间串扰",
+        "评审在应用内查看——除非你主动要求，否则不会向你的拉取请求发布任何内容",
+        "按仓库分别学习已上线的修复、审查评论和设计讨论",
+        "审查 GitHub 拉取请求；需要网关主机上有已认证的 `gh` CLI"
+      ]
+    }
+  }
+}

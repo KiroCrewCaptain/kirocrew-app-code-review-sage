@@ -1,2 +1,11 @@
 [flake8]
 max-line-length = 100
+# Kiro Crew's own lint settings, under which the ported code was written:
+# E203 and W503 are black's, and the long lines left after formatting are prose.
+extend-ignore = E203, W503, E501
+exclude = .git,__pycache__,ui/node_modules
+per-file-ignores =
+    # The routes facade binds every name its composed parts read (backend/_compose.py),
+    # so an import only a part reads looks unused here; the import-inventory test in
+    # tests/test_routes_parts_composition_contract.py stands in for F401.
+    backend/routes.py: F401

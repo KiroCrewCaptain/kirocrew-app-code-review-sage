@@ -1,0 +1,299 @@
+{
+ "me": "sam-fernleaf",
+ "repos": [
+  {
+   "owner": {
+    "login": "fernleaf-garden"
+   },
+   "name": "seed-swap",
+   "full_name": "fernleaf-garden/seed-swap",
+   "pushed_at": "2026-11-03T15:05:00Z",
+   "private": false,
+   "archived": false,
+   "permissions": {
+    "push": true
+   },
+   "default_branch": "main",
+   "html_url": "https://github.com/fernleaf-garden/seed-swap"
+  },
+  {
+   "owner": {
+    "login": "fernleaf-garden"
+   },
+   "name": "planting-calendar",
+   "full_name": "fernleaf-garden/planting-calendar",
+   "pushed_at": "2026-11-03T11:30:00Z",
+   "private": false,
+   "archived": false,
+   "permissions": {
+    "push": true
+   },
+   "default_branch": "main",
+   "html_url": "https://github.com/fernleaf-garden/planting-calendar"
+  },
+  {
+   "owner": {
+    "login": "sam-fernleaf"
+   },
+   "name": "allotment-notes",
+   "full_name": "sam-fernleaf/allotment-notes",
+   "pushed_at": "2026-10-28T08:00:00Z",
+   "private": true,
+   "archived": false,
+   "permissions": {
+    "push": true
+   },
+   "default_branch": "main",
+   "html_url": "https://github.com/sam-fernleaf/allotment-notes"
+  }
+ ],
+ "events": [
+  {
+   "type": "PullRequestReviewEvent",
+   "repo": {
+    "name": "fernleaf-garden/seed-swap"
+   },
+   "created_at": "2026-11-03T10:00:00Z"
+  },
+  {
+   "type": "PushEvent",
+   "repo": {
+    "name": "fernleaf-garden/planting-calendar"
+   },
+   "created_at": "2026-11-02T10:00:00Z"
+  }
+ ],
+ "pulls": [
+  {
+   "url": "https://api.github.com/repos/fernleaf-garden/seed-swap/pulls/42",
+   "html_url": "https://github.com/fernleaf-garden/seed-swap/pull/42",
+   "number": 42,
+   "state": "open",
+   "title": "Cache the frost-date lookup per postcode",
+   "body": "The planting calendar asks the climate service for frost dates on every page view. This keeps each postcode's answer in memory so the calendar renders without waiting on the service.",
+   "draft": false,
+   "user": {
+    "login": "ana-greenleaf"
+   },
+   "labels": [
+    {
+     "name": "performance"
+    },
+    {
+     "name": "calendar"
+    }
+   ],
+   "created_at": "2026-11-02T09:00:00Z",
+   "updated_at": "2026-11-03T15:05:00Z",
+   "head": {
+    "ref": "ana-greenleaf/pr-42",
+    "sha": "881ceef6a40e8f323b564be5e0a790110e237794",
+    "repo": {
+     "full_name": "fernleaf-garden/seed-swap"
+    }
+   },
+   "base": {
+    "ref": "main",
+    "sha": "ee02fe8b00d331716966276ad0a1c6cb0b467af5",
+    "repo": {
+     "full_name": "fernleaf-garden/seed-swap"
+    }
+   },
+   "additions": 30,
+   "deletions": 11,
+   "changed_files": 2,
+   "mergeable": true,
+   "mergeable_state": "clean",
+   "merged_at": null,
+   "requested_reviewers": [
+    {
+     "login": "sam-fernleaf"
+    }
+   ],
+   "_files": [
+    {
+     "filename": "seedswap/weather/frost.py",
+     "status": "modified",
+     "additions": 23,
+     "deletions": 11,
+     "changes": 34,
+     "patch": "@@ -1,18 +1,34 @@\n \"\"\"Last spring frost and first autumn frost, by postcode.\"\"\"\n \n import datetime as dt\n \n import requests\n \n from seedswap.config import settings\n \n+# Frost dates barely change from one request to the next, so remember every\n+# postcode we have looked up instead of asking the climate service each time.\n+_FROST_CACHE: dict[str, dict] = {}\n+\n \n def frost_dates(postcode: str) -> dict:\n     \"\"\"Return {\"last_spring\": date, \"first_autumn\": date} for a postcode.\"\"\"\n-    resp = requests.get(\n-        f\"{settings.CLIMATE_API}/frost\",\n-        params={\"postcode\": postcode},\n-        timeout=5,\n-    )\n-    resp.raise_for_status()\n-    body = resp.json()\n-    return {\n-        \"last_spring\": dt.date.fromisoformat(body[\"last_spring\"]),\n-        \"first_autumn\": dt.date.fromisoformat(body[\"first_autumn\"]),\n-    }\n+    key = postcode.strip().upper()\n+    if key in _FROST_CACHE:\n+        return _FROST_CACHE[key]\n+    try:\n+        resp = requests.get(\n+            f\"{settings.CLIMATE_API}/frost\",\n+            params={\"postcode\": key},\n+        )\n+        resp.raise_for_status()\n+        body = resp.json()\n+        result = {\n+            \"last_spring\": dt.date.fromisoformat(body[\"last_spring\"]),\n+            \"first_autumn\": dt.date.fromisoformat(body[\"first_autumn\"]),\n+        }\n+    except Exception:\n+        # Fall back to the national average so the calendar still renders.\n+        result = {\"last_spring\": dt.date(2026, 4, 15), \"first_autumn\": dt.date(2026, 10, 20)}\n+    _FROST_CACHE[key] = result\n+    return result\n"
+    },
+    {
+     "filename": "tests/weather/test_frost.py",
+     "status": "modified",
+     "additions": 7,
+     "deletions": 0,
+     "changes": 7,
+     "patch": "@@ -10,3 +10,14 @@ def test_frost_dates_parses_the_service_reply(climate):\n     climate.reply({\"last_spring\": \"2026-04-02\", \"first_autumn\": \"2026-10-28\"})\n     dates = frost.frost_dates(\"FL1 2AB\")\n     assert dates[\"last_spring\"] == dt.date(2026, 4, 2)\n+\n+\n+def test_frost_dates_are_cached(climate):\n+    climate.reply({\"last_spring\": \"2026-04-02\", \"first_autumn\": \"2026-10-28\"})\n+    frost.frost_dates(\"FL1 2AB\")\n+    frost.frost_dates(\"fl1 2ab\")\n+    assert climate.calls == 1\n"
+    }
+   ]
+  },
+  {
+   "url": "https://api.github.com/repos/fernleaf-garden/seed-swap/pulls/43",
+   "html_url": "https://github.com/fernleaf-garden/seed-swap/pull/43",
+   "number": 43,
+   "state": "open",
+   "title": "Let members cancel a swap request",
+   "body": "Adds DELETE /swaps/<id> so a member can withdraw a request they no longer need, and tells the member who offered the seeds.",
+   "draft": false,
+   "user": {
+    "login": "ravi-sprout"
+   },
+   "labels": [
+    {
+     "name": "swaps"
+    }
+   ],
+   "created_at": "2026-11-02T09:00:00Z",
+   "updated_at": "2026-11-03T14:40:00Z",
+   "head": {
+    "ref": "ravi-sprout/pr-43",
+    "sha": "83a9aa211fe89d5dfcda412628b4a0f5506491bf",
+    "repo": {
+     "full_name": "fernleaf-garden/seed-swap"
+    }
+   },
+   "base": {
+    "ref": "main",
+    "sha": "ee02fe8b00d331716966276ad0a1c6cb0b467af5",
+    "repo": {
+     "full_name": "fernleaf-garden/seed-swap"
+    }
+   },
+   "additions": 20,
+   "deletions": 0,
+   "changed_files": 1,
+   "mergeable": true,
+   "mergeable_state": "clean",
+   "merged_at": null,
+   "requested_reviewers": [
+    {
+     "login": "sam-fernleaf"
+    }
+   ],
+   "_files": [
+    {
+     "filename": "seedswap/routes/swaps.py",
+     "status": "modified",
+     "additions": 20,
+     "deletions": 0,
+     "changes": 20,
+     "patch": "@@ -1,9 +1,10 @@\n from flask import Blueprint, abort, jsonify, request\n \n from seedswap.auth.session import current_member, login_required\n from seedswap.db import db\n from seedswap.models import SwapRequest\n+from seedswap.notify import tell_member\n \n bp = Blueprint(\"swaps\", __name__, url_prefix=\"/swaps\")\n \n@@ -38,3 +39,22 @@ def accept_swap(swap_id: int):\n     swap.status = \"accepted\"\n     db.session.commit()\n     return jsonify(swap.to_dict())\n+\n+\n+@bp.route(\"/<int:swap_id>\", methods=[\"DELETE\"])\n+@login_required\n+def cancel_swap(swap_id: int):\n+    \"\"\"Let a member take back a swap request they no longer want.\"\"\"\n+    swap = SwapRequest.query.get(swap_id)\n+    if swap is None:\n+        abort(404)\n+    if swap.status == \"accepted\":\n+        return jsonify({\"error\": \"this swap was already accepted\"}), 409\n+    reason = request.args.get(\"reason\", \"\")\n+    db.session.delete(swap)\n+    db.session.commit()\n+    tell_member(\n+        swap.offered_by_id,\n+        f\"{current_member().display_name} cancelled their request: {reason}\",\n+    )\n+    return \"\", 204\n"
+    }
+   ]
+  },
+  {
+   "url": "https://api.github.com/repos/fernleaf-garden/seed-swap/pulls/44",
+   "html_url": "https://github.com/fernleaf-garden/seed-swap/pull/44",
+   "number": 44,
+   "state": "open",
+   "title": "Fix a typo in the welcome email",
+   "body": "\"recieve\" -> \"receive\".",
+   "draft": false,
+   "user": {
+    "login": "jo-compost"
+   },
+   "labels": [
+    {
+     "name": "docs"
+    }
+   ],
+   "created_at": "2026-11-02T09:00:00Z",
+   "updated_at": "2026-11-02T18:10:00Z",
+   "head": {
+    "ref": "jo-compost/pr-44",
+    "sha": "04d85e831a873b2c3f7150c2220b107689864a21",
+    "repo": {
+     "full_name": "fernleaf-garden/seed-swap"
+    }
+   },
+   "base": {
+    "ref": "main",
+    "sha": "ee02fe8b00d331716966276ad0a1c6cb0b467af5",
+    "repo": {
+     "full_name": "fernleaf-garden/seed-swap"
+    }
+   },
+   "additions": 1,
+   "deletions": 1,
+   "changed_files": 1,
+   "mergeable": true,
+   "mergeable_state": "clean",
+   "merged_at": null,
+   "requested_reviewers": [
+    {
+     "login": "sam-fernleaf"
+    }
+   ],
+   "_files": [
+    {
+     "filename": "seedswap/templates/email/welcome.txt",
+     "status": "modified",
+     "additions": 1,
+     "deletions": 1,
+     "changes": 2,
+     "patch": "@@ -1,7 +1,7 @@\n Hi {{ member.display_name }},\n \n-Welcome to Seed Swap! You can now list the seeds you have spare and recieve\n+Welcome to Seed Swap! You can now list the seeds you have spare and receive\n seeds from gardeners near you.\n \n Happy growing,\n The Fernleaf Garden volunteers\n"
+    }
+   ]
+  },
+  {
+   "url": "https://api.github.com/repos/fernleaf-garden/planting-calendar/pulls/7",
+   "html_url": "https://github.com/fernleaf-garden/planting-calendar/pull/7",
+   "number": 7,
+   "state": "open",
+   "title": "Show the frost dates on the month header",
+   "body": "The calendar now says when the last spring frost and the first autumn frost fall, in the month they fall in.",
+   "draft": false,
+   "user": {
+    "login": "ana-greenleaf"
+   },
+   "labels": [
+    {
+     "name": "calendar"
+    }
+   ],
+   "created_at": "2026-11-02T09:00:00Z",
+   "updated_at": "2026-11-03T11:30:00Z",
+   "head": {
+    "ref": "ana-greenleaf/pr-7",
+    "sha": "4a2761c7a715a9786d66594ed8730ed1ea1e7887",
+    "repo": {
+     "full_name": "fernleaf-garden/planting-calendar"
+    }
+   },
+   "base": {
+    "ref": "main",
+    "sha": "3b5f37f46702dd7f3d02d195296739c4910dd228",
+    "repo": {
+     "full_name": "fernleaf-garden/planting-calendar"
+    }
+   },
+   "additions": 6,
+   "deletions": 0,
+   "changed_files": 1,
+   "mergeable": true,
+   "mergeable_state": "clean",
+   "merged_at": null,
+   "requested_reviewers": [
+    {
+     "login": "sam-fernleaf"
+    }
+   ],
+   "_files": [
+    {
+     "filename": "src/MonthHeader.tsx",
+     "status": "modified",
+     "additions": 6,
+     "deletions": 0,
+     "changes": 6,
+     "patch": "@@ -12,6 +12,12 @@ export function MonthHeader({ month, frost }: Props) {\n   return (\n     <header className=\"month\">\n       <h2>{monthName(month)}</h2>\n+      {frost?.lastSpring && sameMonth(frost.lastSpring, month) && (\n+        <p className=\"frost\">Last frost around {formatDay(frost.lastSpring)}</p>\n+      )}\n+      {frost?.firstAutumn && sameMonth(frost.firstAutumn, month) && (\n+        <p className=\"frost\">First frost around {formatDay(frost.firstAutumn)}</p>\n+      )}\n     </header>\n   )\n }\n"
+    }
+   ]
+  }
+ ],
+ "review_requested": [
+  "fernleaf-garden/seed-swap#43",
+  "fernleaf-garden/planting-calendar#7"
+ ]
+}

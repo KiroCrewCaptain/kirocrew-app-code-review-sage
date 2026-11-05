@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""A stand-in `gh` that serves the fictional GitHub in data.json, for capture only.
+
+capture/README.md ("Code Review Sage's demo GitHub") says how a capture run puts
+it in front of the real `gh`: `KIROCREW_SAGE_GH` points the app's own calls at
+it, and its directory leads `PATH` so the review worker's shell finds it first.
+It answers the calls the app and the review worker make: `gh api` on the
+repository, pull request, file, comment and event paths, `gh search prs`,
+`gh pr diff`, `gh pr view` and `gh auth status`. It reads nothing but data.json,
+writes nothing, opens no socket, and holds no credential; a call it does not know
+fails with exit 1, as a real `gh` would on a missing path.
+"""
+
+import json
+import re
+import sys
+from pathlib import Path
+
+DATA = json.loads(Path(__file__).with_name("data.json").read_text(encoding="utf-8"))
+
+
+def fail(message: str, code: int = 1) -> None:
+    sys.stderr.write(message + "\n")
+    sys.exit(code)
+
+
+def emit(value) -> None:
+    sys.stdout.write(json.dumps(value) + "\n")
+
+
+def find_pr(full: str, number: int):
+    for pr in DATA["pulls"]:
+        if pr["head"]["repo"]["full_name"] == full and pr["number"] == number:
+            return pr
+    return None
+
+
+def public(pr: dict) -> dict:
+    return {k: v for k, v in pr.items() if not k.startswith("_")}
+
+
+def get(value, path: str):
+    for part in [p for p in path.split(".") if p]:
+        value = value.get(part) if isinstance(value, dict) else None
+    return value
+
+
+def jq(value, expr: str):
+    """The few jq shapes the app and a reviewer use; anything else is the raw JSON."""
+    expr = expr.strip()
+    projections = {
+        ".login": lambda v: [v.get("login")],
+    }
+    if expr in projections:
+        return projections[expr](value), True
+    m = re.fullmatch(r"\.\[\]\s*\|\s*\{(.*)\}", expr, re.S)
+    if m and isinstance(value, list):
+        fields = []
+        for part in re.split(r",\s*(?![^\[]*\])", m.group(1)):
+            name, _, src = part.partition(":")
+            fields.append((name.strip(), src.strip()))
+        rows = []
+        for item in value:
+            row = {}
+            for name, src in fields:
+                if src.startswith("[") and ".name" in src:
+                    row[name] = [lb.get("name") for lb in (item.get("labels") or [])]
+                else:
+                    row[name] = get(item, src)
+            rows.append(row)
+        return rows, True
+    m = re.fullmatch(r"(\.[A-Za-z_][\w.]*)", expr)
+    if m:
+        return [get(value, m.group(1))], True
+    m = re.fullmatch(r"\.\[\]\s*\|\s*(\.[A-Za-z_][\w.]*)", expr)
+    if m and isinstance(value, list):
+        return [get(item, m.group(1)) for item in value], True
+    m = re.fullmatch(r"\.\[\]\.([A-Za-z_][\w.]*)", expr)
+    if m and isinstance(value, list):
+        return [get(item, m.group(1)) for item in value], True
+    return value, False
+
+
+def api(args: list[str]) -> None:
+    path = next((a for a in args if not a.startswith("-")), "")
+    expr = ""
+    if "--jq" in args:
+        expr = args[args.index("--jq") + 1]
+    elif "-q" in args:
+        expr = args[args.index("-q") + 1]
+    path = path.lstrip("/")
+    base, _, _query = path.partition("?")
+    value = None
+    if base == "user":
+        value = {"login": DATA["me"], "name": "Sam (Fernleaf Garden)"}
+    elif base == "user/repos":
+        value = DATA["repos"]
+    elif re.fullmatch(r"users/[^/]+/events", base):
+        value = DATA["events"]
+    elif m := re.fullmatch(r"repos/([^/]+/[^/]+)", base):
+        value = next((r for r in DATA["repos"] if r["full_name"] == m.group(1)), None)
+    elif m := re.fullmatch(r"repos/([^/]+/[^/]+)/pulls", base):
+        value = [public(p) for p in DATA["pulls"] if p["head"]["repo"]["full_name"] == m.group(1)]
+    elif m := re.fullmatch(r"repos/([^/]+/[^/]+)/pulls/(\d+)", base):
+        pr = find_pr(m.group(1), int(m.group(2)))
+        value = public(pr) if pr else None
+    elif m := re.fullmatch(r"repos/([^/]+/[^/]+)/pulls/(\d+)/files", base):
+        pr = find_pr(m.group(1), int(m.group(2)))
+        value = pr["_files"] if pr else None
+    elif m := re.fullmatch(r"repos/([^/]+/[^/]+)/(pulls|issues)/(\d+)/(comments|reviews)", base):
+        value = [] if find_pr(m.group(1), int(m.group(3))) else None
+    elif m := re.fullmatch(r"repos/([^/]+/[^/]+)/commits/[0-9a-f]+/(check-runs|status)", base):
+        value = {"total_count": 0, "check_runs": [], "statuses": [], "state": "success"}
+    if value is None:
+        fail(f"gh: Not Found (HTTP 404) [{path}]")
+    if expr:
+        out, projected = jq(value, expr)
+        if projected:
+            for row in out:
+                if isinstance(row, (dict, list)):
+                    emit(row)
+                elif row is not None:
+                    sys.stdout.write(f"{row}\n")
+            return
+    emit(value)
+
+
+def pr_ref(args: list[str]):
+    target = next((a for a in args if not a.startswith("-")), "")
+    m = re.search(r"github\.com/([^/]+/[^/]+)/pull/(\d+)", target)
+    if m:
+        return find_pr(m.group(1), int(m.group(2)))
+    if target.isdigit() and "--repo" in args:
+        return find_pr(args[args.index("--repo") + 1], int(target))
+    return None
+
+
+def main(argv: list[str]) -> None:
+    if not argv or argv[0] in ("--version", "version"):
+        sys.stdout.write("gh version 2.62.0 (capture stand-in)\n")
+        return
+    cmd, rest = argv[0], argv[1:]
+    if cmd == "api":
+        api(rest)
+    elif cmd == "auth" and rest[:1] == ["status"]:
+        sys.stdout.write(f"github.com\n  Logged in to github.com account {DATA['me']}\n")
+    elif cmd == "search" and rest[:1] == ["prs"]:
+        rows = []
+        for ref in DATA["review_requested"]:
+            full, _, num = ref.partition("#")
+            pr = find_pr(full, int(num))
+            rows.append({
+                "url": pr["html_url"], "number": pr["number"], "title": pr["title"],
+                "repository": {"nameWithOwner": full}, "author": {"login": pr["user"]["login"]},
+                "updatedAt": pr["updated_at"], "isDraft": pr["draft"], "labels": pr["labels"],
+            })
+        emit(rows)
+    elif cmd == "pr" and rest[:1] == ["diff"]:
+        pr = pr_ref(rest[1:])
+        if pr is None:
+            fail("gh: no pull request found")
+        for f in pr["_files"]:
+            name = f["filename"]
+            sys.stdout.write(f"diff --git a/{name} b/{name}\n--- a/{name}\n+++ b/{name}\n")
+            sys.stdout.write(f["patch"] if f["patch"].endswith("\n") else f["patch"] + "\n")
+    elif cmd == "pr" and rest[:1] == ["view"]:
+        pr = pr_ref(rest[1:])
+        if pr is None:
+            fail("gh: no pull request found")
+        emit({
+            "number": pr["number"], "title": pr["title"], "body": pr["body"],
+            "url": pr["html_url"], "author": {"login": pr["user"]["login"]},
+            "headRefOid": pr["head"]["sha"], "baseRefName": pr["base"]["ref"],
+            "files": [{"path": f["filename"], "additions": f["additions"],
+                       "deletions": f["deletions"]} for f in pr["_files"]],
+            "state": "OPEN", "isDraft": pr["draft"],
+        })
+    else:
+        fail(f"gh (capture stand-in): unsupported command: {' '.join(argv[:3])}")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
