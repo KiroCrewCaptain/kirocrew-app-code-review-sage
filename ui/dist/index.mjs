@@ -1907,7 +1907,9 @@ function AddReposModal({ onClose }) {
 	const submitManual = () => {
 		const v = manual.trim();
 		if (!v) return;
-		pinRepoUrl(v.includes("://") ? v : `https://github.com/${v.replace(/^\/+|\/+$/g, "")}`);
+		const colon = v.indexOf(":");
+		const namesHost = v.includes("://") || colon > 0 && !v.slice(0, colon).includes("/");
+		pinRepoUrl(namesHost ? v : `https://github.com/${v.replace(/^\/+|\/+$/g, "")}`);
 		setManual("");
 	};
 	return /* @__PURE__ */ jsx(Fragment, { children: /* @__PURE__ */ jsxs("div", {

@@ -118,7 +118,8 @@ tells you how if it is missing).
 
 The page opens with **Pick a repo to see its pull requests.** Choose **Add a
 repo** and pick a repository from the ones your GitHub account can reach, or
-type `owner/repo` or paste a repository or pull request link. Added
+type `owner/repo` or paste a repository or pull request link, or the
+address `git remote -v` shows (`git@github.com:owner/repo.git`). Added
 repositories stay in the menu at the top of the page.
 
 ## How to use it
@@ -184,6 +185,11 @@ If every review fails, check that an ordinary chat works.
 **My repository is on GitHub Enterprise.**
 Add the host to `github_hosts` in the app's `config.json` (see
 [Development](#development)) and sign `gh` in for that host.
+
+**My repository is on GitLab.**
+Code Review Sage reviews GitHub pull requests only. A repository on gitlab.com,
+or on a GitLab server your dashboard lists, is refused with a message that says
+it is on GitLab; adding that server to `github_hosts` does not change that.
 
 **I want the pull request's description and checks next to the review.**
 This copy links to the pull request on GitHub for those (see [Install](#install)).
