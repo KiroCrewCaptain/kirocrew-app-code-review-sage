@@ -193,7 +193,7 @@ class TestToolApprovalFailsClosed(unittest.IsolatedAsyncioTestCase):
                 mock.patch.object(review_pool, "_steer_host_deny", None):
             pool = review_pool.ReviewPool(work_dir=_work_dir(self))
             await pool.begin_batch()
-            runtime = await pool._holder.acquire()
+            runtime, _backend = await pool._holder.acquire()
             real_create = runtime.create_session
 
             async def _create(*a, **k):
