@@ -109,6 +109,7 @@ above), refuses. `register_routes` reports what is missing through `ctx.health`
 |---|---|---|
 | `kiro_crew.acp.runtime.AcpRuntime`, `kiro_crew.acp.types` (`EVENT_*`, `STOP_REASON_*`, `PROVIDER_LABEL_DEFAULT`), `kiro_crew.acp_backends` (backend ids, `backend_from_stored`, `resolve_selected_backend`) | `sage_lib/review_pool.py:52-67`, `followup.py:55` | A headless app-worker session API: spawn one runtime for a batch, one session per task, stream text/tool/permission/complete events, keep a transcript resumable. Without it no review starts. |
 | `kiro_crew.permission_floor.refusal_for` / `OUTCOME_REJECTED_TRANSPORT_FLOOR`, `kiro_crew.llm_helpers._steer_host_deny`, `kiro_crew.constants.DENY_CAUSE_POLICY`, `kiro_crew.sel.sel().log_tool_invocation` | `sage_lib/review_pool.py:69`, `:113`, `:118-119` | The same session API carrying the host's permission floor and per-tool audit, so an app worker cannot approve a tool the host would refuse. Without the floor every tool is refused; without the log, too. |
+| `kiro_crew.agent_sdk.capabilities_for`, `kiro_crew.agent_sdk.drivers.acp.build_acp_provider`, `kiro_crew.session_pid.register_protected_pid` / `unregister_protected_pid` | `sage_lib/review_pool.py` `_client_spawnable`, `_start_review_client` | The same worker API for a backend the shared runtime does not serve (`claude`, `opencode`, ...): one provider per task, its PID kept out of the orphan sweep while it runs. A host missing any of the four keeps that backend on the kiro-cli fallback, with the one warning. |
 | `kiro_crew.shared_crew.admission.OperationKind`, `shared_crew.turn_gate.run_admitted_or_raise` | `sage_lib/review_pool.py:749-750` | Fair admission for an app's background turns. Without it the review is refused. |
 | `kiro_crew.workspace_cli_settings.workspace_cli_settings_lock`, `kiro_crew.kiro_cli.resolve_kiro_cli`, `kiro_crew.config.paths.kiro_agents_dir`, `kiro_crew.config.loader._stored_agent_value` / `_ABSENT_AGENT_KEY` / `DEFAULT_MODEL`, `kiro_crew.effort.EFFORT_LEVELS`, `kiro_crew.sandbox.SandboxUnavailableError`, `kiro_crew.edition`, `kiro_crew.enterprise_boot.kas_refusal`, `kiro_crew.platform_compat` | `sage_lib/review_pool.py:93-141`, `:185`, `:213`, `:397-405` | Part of the worker API: the effort overlay, the preflight, the backend choice and the sandbox refusal belong to the host. Each falls back to the built-in's standalone behaviour (no overlay, the reviewer default, `"auto"`, the five effort levels, no translation). |
 | `kiro_crew.github_runner` (`resolve_gh`, `run_gh`, `gh_env`) | `sage_lib/discovery.py:40` | A provider-CLI runner seam (trusted binary, minimal env, audited spawn). Without it every `gh` call raises a setup error, as before. |
@@ -212,6 +213,15 @@ above), refuses. `register_routes` reports what is missing through `ctx.health`
     the built-in does. Core tests that use `code-review-sage` only as a sample
     app name or agent name (token auth, API health, dashboard approval, the ACP
     client's hooks and the others) stay in Kiro Crew with a neutral fixture.
+
+## Fixes since the port
+
+Each change that landed on the built-in after the port (Kiro Crew `main` after
+`55439d8770`), carried here so a user on this copy has it too.
+
+| Kiro Crew | What a user sees | Here |
+|---|---|---|
+| kirodotdev/KiroCrew#31145 (part of kirodotdev/KiroCrew#22196) | With `agent.acp_backend` set to a backend the shared review runtime cannot drive but a per-session client can (`claude`, `opencode`, `goose`, `pi`, `deepseek`, `copilot`, `strands`), each review runs on that backend instead of on kiro-cli with a warning, and an enterprise build runs it there instead of refusing it. Each in-flight review is its own process, under the same concurrency cap and the same `review.effort`, with temporary memory, and is stopped when the app is disabled. No follow-up chat is offered for such a review | `sage_lib/review_pool.py`; `tests/test_review_pool.py`, `tests/test_review_pool_enterprise_floor.py`, `tests/test_followup.py`, `tests/test_host_seams.py` |
 
 ## Layout
 
