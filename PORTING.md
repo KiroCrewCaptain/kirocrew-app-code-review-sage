@@ -31,8 +31,9 @@ change here.
 ## What carried over unchanged
 
 - `app.json` `name` (`code-review-sage`), `version` (`0.9.3`), `author`,
-  `permissions` (`api: ["/api/apps/code-review-sage", "/api/apps/code-review-sage/*"]`,
-  `network`, `storage`), `dependencies` (`commands: ["gh"]`), `platform`,
+  `permissions` (`api: ["/api/apps/code-review-sage", "/api/apps/code-review-sage/*",
+  "/api/source/pull-request"]`, `network`, `storage`; the last `api` entry is the
+  one kirodotdev/KiroCrew#36343 adds to the built-in's own manifest, see gaps 2 and 3), `dependencies` (`commands: ["gh"]`), `platform`,
   `defaultEnabled: false`, `skills`, and every display field. 
   `tests/test_manifest_contract.py` compares them with the built-in's manifest
   (`tests/fixtures/builtin-app.json`), because adoption refuses a manifest that
@@ -143,16 +144,27 @@ above), refuses. `register_routes` reports what is missing through `ctx.health`
    `:300-330`, `components/PrSourcePanel.tsx:47`). Neither the endpoint (outside
    the grant) nor the component (not in the App SDK) is available. This copy
    shows the review and links the pull request out to GitHub; the title falls
-   back to the review's own report row. **Adoption waits for** a pull-request
-   panel in the App SDK, or a provider-read seam.
+   back to the review's own report row. **What is left is page work here.** The
+   App SDK exports the dashboard's `PullRequestPanel` since seam level 2, behind a
+   declared `/api/source/pull-request`, and kirodotdev/KiroCrew#36343 (owner ruling on Kiro
+   Crew #26967: an app gets what its built-in already uses) declares that entry in
+   the built-in's manifest, which every existing user's record approves before the
+   pin. This `app.json` declares the same list, so adoption is no widening
+   (`permission_refusal` answers `None` on that change). The tab and the header
+   chips can come back by rendering the SDK panel (feature-detected on
+   `APP_SDK_LEVEL >= 2`) and reading the payload through the scoped client;
+   adoption waits for that port.
 3. **Publishing the draft review moved to GitHub.** The built-in's publish bar
    (Approve / Request changes / Submit as comment) read the pending review and
    submitted it through the dashboard's `/api/source/pull-request/pending-review`
    and its submit, bound to the draft's content digest
    (`components/DraftReviewActions.tsx:53-62`). This copy keeps the built-in's
    delivery-evidence gate and, when this run did stage a draft, says so and links
-   to the pull request, where GitHub's own form publishes it. **Adoption waits
-   for** the same provider seam as gap 2.
+   to the pull request, where GitHub's own form publishes it. The grant is in
+   place (gap 2): `pending-review` and `submit-review` are children of the
+   declared `/api/source/pull-request`, so the publish bar can come back on the
+   scoped client with the built-in's request bodies. **Adoption waits for** that
+   port.
 4. **The review worker is driven through Kiro Crew's private ACP runtime** (see
    the table above). A refactor of `AcpRuntime`, the permission floor, the SEL
    or the admission gate can break reviews silently; `minKiroCrewVersion`, the
