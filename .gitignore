@@ -13,3 +13,6 @@ app-crons.json
 # pointed somewhere else by hand.
 *.raw.png
 *.webm
+# The review worker's Kiro CLI workspace settings, written before each review
+# session (.kiro/README.md).
+.kiro/settings/
