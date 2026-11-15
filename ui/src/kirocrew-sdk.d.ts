@@ -76,6 +76,14 @@ declare module '@kirocrew/app-sdk' {
 
   // Level 1 (feature-detect before use).
   export const APP_SDK_LEVEL: number | undefined
+
+  // Level 2 (read through hostSdk.ts only): the dashboard's pull-request panel,
+  // over this app's scoped client for its declared `/api/source/pull-request`.
+  export const PullRequestPanel: import('react').ComponentType<{
+    sources: { url: string; provider: string; number: number; repo: string; kind: 'change' | 'issue' }[]
+    selectedUrl: string
+    onSelect: (url: string) => void
+  }> | undefined
 }
 
 declare module '@kirocrew/app-sdk/ui' {

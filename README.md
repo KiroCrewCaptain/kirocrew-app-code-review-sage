@@ -34,7 +34,7 @@ for when you open them.
 
 It reviews; it does not decide. Nothing is written to a pull request unless you
 choose to send a finding, and even then it is staged as a draft review that
-only you can see until you publish it on GitHub.
+only you can see until you publish it.
 
 ## Top 3 use cases
 
@@ -90,12 +90,10 @@ starts switched off:
 3. Choose **Enable** on the tile (it is also in the tile's **⋯** menu).
 4. **Code Review Sage** now appears under **Apps** in the sidebar.
 
-The copy that comes with Kiro Crew can also open a pull request's description,
-checks and file changes inside the page, publish the draft review from the
-page, and start a follow-up chat with the reviewer. This repository's copy,
-pictured here, cannot do those three yet (see [Development](#development)); it
-links to the pull request on GitHub instead, and can only continue a follow-up
-chat that already exists.
+The copy that comes with Kiro Crew can also start a new follow-up chat with the
+reviewer. This repository's copy cannot do that yet (see
+[Development](#development)); it can continue a follow-up chat that already
+exists.
 
 **Coming later: from the Kiro Crew App Store.** Once this app is listed there:
 
@@ -137,15 +135,25 @@ repositories stay in the menu at the top of the page.
 5. On a finding, choose **Draft this finding** to stage it on the pull request,
    or **Dismiss** and give a reason to leave it out (**Undo** brings it back).
    **Draft N comments** stages every finding not yet sent. A staged draft is
-   only visible to you: open the pull request on GitHub (its number is a link)
-   to publish it.
-6. Past reviews are under **Reviews**. **Requests** lists the pull requests
+   only visible to you until you publish it.
+6. **Draft review**, under the report, shows the draft this review staged,
+   body and inline comments, and publishes it as **Submit as comment**,
+   **Request changes** or **Approve**. Each asks you to confirm the verdict,
+   because publishing cannot be taken back. Publishing is held back while the
+   review is still running, when a later review replaced the draft, or when the
+   draft was written against an earlier commit; **Approve** is held back while
+   auto-merge is on for the pull request.
+7. The **Pull request** tab, beside **Sage Review**, shows the pull request
+   itself: its description, checks, review threads, file changes and commits.
+   The header above it says whether it is open or merged, whether it has
+   conflicts and how many checks fail.
+8. Past reviews are under **Reviews**. **Requests** lists the pull requests
    that ask for your review on GitHub, across repositories; tick them and
    review them the same way.
 
    ![The Requests tab: two open pull requests that ask sam-fernleaf for a review, #43 Let members cancel a swap request in fernleaf-garden/seed-swap and #7 Show the frost dates on the month header in fernleaf-garden/planting-calendar, each with a box to tick for review](docs/media/requests-light.png)
 
-7. The three icons at the top switch between **Reviews**, **Learning** (what
+9. The three icons at the top switch between **Reviews**, **Learning** (what
    the reviewer has learned for your repositories, with the button that merges
    new lessons in) and **Settings** (the **Model** and **Reasoning effort** the
    reviewer uses, and how many **Reviews at once** run).
@@ -192,7 +200,7 @@ or on a GitLab server your dashboard lists, is refused with a message that says
 it is on GitLab; adding that server to `github_hosts` does not change that.
 
 **I want the pull request's description and checks next to the review.**
-This copy links to the pull request on GitHub for those (see [Install](#install)).
+Open the **Pull request** tab beside **Sage Review** in the pull request's pane.
 
 ## Development
 
@@ -203,8 +211,7 @@ existing built-in install onto this source in place, at a commit pinned in that
 release. Until a user's Kiro Crew does that, it keeps running its built-in
 copy, and nothing here changes what they run. [PORTING.md](PORTING.md) lists
 every place this copy differs from the built-in and why, and what Kiro Crew
-must add first (gaps 1-3: opening a new follow-up chat, the pull request panel,
-and publishing the draft review from the page).
+must add first (gap 1: opening a new follow-up chat).
 
 | Path | What it is |
 |---|---|

@@ -11,7 +11,8 @@ import { useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { CATALOGS, localeChain, t } from '../src/i18n'
-import { SageApiError, sageApi, setTransport } from '../src/api'
+import { SageApiError, SourceApiError, sageApi, setTransport, sourceApi } from '../src/api'
+import { pullRequestErrorDetails } from '../src/host/pullRequestErrors'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '../src/host/DropdownMenu'
@@ -143,6 +144,52 @@ describe('the transport', () => {
   })
 })
 
+describe('the pull-request family through the scoped client', () => {
+  afterEach(() => setTransport(null))
+
+  it('posts the dashboard client\'s bodies to the declared /api/source/pull-request family', async () => {
+    const raw = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    setTransport({ raw })
+    const url = 'https://github.com/acme/widgets/pull/7'
+    await sourceApi.pullRequestSource(url)
+    await sourceApi.pullRequestSource(url, true)
+    await sourceApi.pullRequestPendingReview(url)
+    await sourceApi.submitPullRequestReview(url, '4242', 'REQUEST_CHANGES', 'd1')
+    expect(raw.mock.calls.map(c => [c[0], (c[1] as RequestInit).method, JSON.parse(String((c[1] as RequestInit).body))])).toEqual([
+      ['/api/source/pull-request', 'POST', { url, refresh: false }],
+      ['/api/source/pull-request', 'POST', { url, refresh: true }],
+      ['/api/source/pull-request/pending-review', 'POST', { url }],
+      ['/api/source/pull-request/submit-review', 'POST', { url, reviewId: '4242', event: 'REQUEST_CHANGES', contentDigest: 'd1' }],
+    ])
+    // Every path is the declared entry or a child of it: nothing else is asked.
+    const manifest = JSON.parse(readFileSync(join(__dirname, '..', '..', 'app.json'), 'utf-8'))
+    expect(manifest.permissions.api).toContain('/api/source/pull-request')
+    for (const [path] of raw.mock.calls as unknown as [string][]) {
+      expect(path === '/api/source/pull-request' || path.startsWith('/api/source/pull-request/')).toBe(true)
+    }
+  })
+
+  it('reads the gateway sentence and keeps the raw body of a refusal', async () => {
+    const body = JSON.stringify({ error: 'gh is not logged in', loginCommand: 'gh auth login --hostname github.com' })
+    setTransport({
+      raw: async () => { throw Object.assign(new Error(`API 401: ${body}`), { status: 401, body }) },
+    })
+    const err = await sourceApi.pullRequestPendingReview('https://github.com/acme/widgets/pull/7').catch(e => e)
+    expect(err).toBeInstanceOf(SourceApiError)
+    expect(err.message).toBe('gh is not logged in')
+    expect(err.status).toBe(401)
+    // The publish bar's error parser still finds the structured marker.
+    expect(pullRequestErrorDetails(err).loginCommand).toBe('gh auth login --hostname github.com')
+  })
+
+  it('names a refusal with no JSON body by its text, then by its status', async () => {
+    setTransport({ raw: async () => { throw Object.assign(new Error('API 502'), { status: 502, body: 'bad gateway' }) } })
+    expect((await sourceApi.pullRequestSource('u').catch(e => e)).message).toBe('bad gateway')
+    setTransport({ raw: async () => { throw Object.assign(new Error('API 502'), { status: 502, body: '' }) } })
+    expect((await sourceApi.pullRequestSource('u').catch(e => e)).message).toBe('HTTP 502')
+  })
+})
+
 describe('the menu stand-in', () => {
   function Menu({ onPick }: { onPick: (v: string) => void }) {
     return (
@@ -243,5 +290,25 @@ describe('a host before App Kit level 1', () => {
     const ui = await import('@kirocrew/app-sdk/ui')
     expect(sdk.Select).toBe((ui as { Select: unknown }).Select)
     expect(sdk.guideCaution).toEqual({ 'data-guide-caution': '' })
+  })
+})
+
+describe('a host before App Kit level 2', () => {
+  it('has no pull-request panel, so the detail pane shows the review alone', async () => {
+    vi.resetModules()
+    vi.doMock('@kirocrew/app-sdk', async (importOriginal) => {
+      const { PullRequestPanel: _omitted, ...rest } = await importOriginal<Record<string, unknown>>()
+      return rest
+    })
+    const sdk = await import('../src/hostSdk')
+    expect(sdk.PullRequestPanel).toBeNull()
+    vi.doUnmock('@kirocrew/app-sdk')
+    vi.resetModules()
+  })
+
+  it('uses the host panel when it exists', async () => {
+    const sdk = await import('../src/hostSdk')
+    const host = await import('@kirocrew/app-sdk')
+    expect(sdk.PullRequestPanel).toBe((host as { PullRequestPanel: unknown }).PullRequestPanel)
   })
 })

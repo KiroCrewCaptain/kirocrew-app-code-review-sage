@@ -12,16 +12,45 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Workspace from '../src/Workspace'
-import { sageApi } from '../src/api'
+import { sageApi, sourceApi } from '../src/api'
+import { stubPullRequestPanel } from './stubs/app-sdk'
 import { SageProvider } from '../src/context'
 import type {
   Run, RunReport, RunsResponse,
 } from '../src/lib/types'
 
-// The app's api client is the single seam between the page and the backend. The
-// built-in also read the pull request's provider payload and its pending review
-// through the dashboard's own client; an installed app has neither (PORTING.md).
+// The app's api client is the single seam between the page and the backend:
+// `sageApi` for the app's own routes, `sourceApi` for the dashboard's
+// pull-request family the manifest declares (the built-in reached the same
+// endpoints through the dashboard's client).
 vi.mock('../src/api', () => ({
+  sourceApi: {
+    pullRequestSource: vi.fn(async () => ({
+      provider: 'github', url: 'https://github.com/acme/widgets/pull/7', number: 7,
+      title: 'Tighten the cookie jar',
+      description: 'Caps the jar so a big header cannot wedge the gateway.',
+      state: 'open', draft: false, mergedAt: '', updatedAt: '', headBranch: 'f',
+      baseBranch: 'main', headSha: 'abc', author: 'ann', additions: 1, deletions: 0,
+      changedFiles: 1, commits: [],
+      checks: [{
+        name: 'Backend Tests', workflow: 'CI', status: 'completed',
+        conclusion: 'failure', bucket: 'failed', url: '', startedAt: '', completedAt: '',
+      }],
+      comments: [{
+        id: 'c1', kind: 'comment', author: 'bob', body: 'Looks fine.',
+        state: '', createdAt: '', url: '', path: '', line: null,
+      }],
+      files: [],
+    })),
+    // The publish bar lives in the detail pane, so opening a PR reads its draft.
+    // Default: no draft, which keeps the bar silent for tests about other things.
+    pullRequestPendingReview: vi.fn(async () => ({
+      reviewId: '', comments: [], body: '', commitId: '', headSha: '',
+      stale: false, contentRedacted: false, autoMergeArmed: false,
+      contentDigest: '', staleDismissalEnabled: true,
+    })),
+    submitPullRequestReview: vi.fn(async () => ({ submitted: true, event: 'COMMENT' })),
+  },
   sageApi: {
     runs: vi.fn(),
     run: vi.fn(),
@@ -50,6 +79,7 @@ vi.mock('../src/api', () => ({
 }))
 
 const mockApi = sageApi as unknown as Record<string, ReturnType<typeof vi.fn>>
+const core = sourceApi as unknown as Record<string, ReturnType<typeof vi.fn>>
 
 function run(over: Partial<Run> = {}): Run {
   return {
@@ -145,6 +175,11 @@ function mount(runsResponse: RunsResponse | null, initialRunId?: string) {
       </QueryClientProvider>
     </MemoryRouter>,
   )
+}
+
+/** The DETAIL pane's own tab bar. */
+function detailTabs() {
+  return screen.getByRole('tablist', { name: /Pull request detail/i })
 }
 
 /** The middle column leads with Pull requests, so thread assertions select the
@@ -443,10 +478,7 @@ describe('Code Review Sage shell', () => {
     expect(box).not.toBeChecked()
   })
 
-  it('makes the review the whole pane and links the pull request out to GitHub', async () => {
-    // The built-in had a second tab rendering the dashboard's PullRequestPanel
-    // from the dashboard's own PR endpoint. Neither is an App Kit seam, so the
-    // pane holds the review and the header links to the pull request.
+  it('puts the PR content behind tabs, with Sage Review leading', async () => {
     mockApi.repoPrs.mockResolvedValue({
       repo: 'acme/widgets', count: 1, prs: [prFixture({ reviewed: true })],
     })
@@ -455,15 +487,38 @@ describe('Code Review Sage shell', () => {
     await userEvent.click(
       await screen.findByRole('button', { name: /Open pull request #7/i }),
     )
-    expect(await screen.findByRole('heading', { name: /Tighten the cookie jar/ })).toBeTruthy()
-    expect(screen.queryByRole('tablist', { name: /Pull request detail/i })).toBeNull()
-    const out = screen.getAllByRole('link', { name: /#7/ })
-      .map((a) => a.getAttribute('href'))
-    expect(out).toContain('https://github.com/acme/widgets/pull/7')
+
+    // Sage Review is the default tab: the app's own output leads.
+    const reviewTab = await within(detailTabs()).findByRole('tab', { name: /Sage Review/i })
+    expect(reviewTab.getAttribute('aria-selected')).toBe('true')
+    expect(within(detailTabs()).getByRole('tab', { name: /Pull request/i })).toBeTruthy()
+    // The failing check is the Pull request tab's badge, read from the payload.
+    expect(within(detailTabs()).getByRole('tab', { name: /Pull request/i }).textContent).toContain('1')
+
+    // The provider's own view of the PR is NOT rendered until its tab is chosen.
+    // Choosing it mounts the App SDK's PullRequestPanel for this one pull
+    // request, so description, checks, threads, diff and commits arrive through
+    // the dashboard's component rather than a Sage-local copy of it.
+    expect(screen.queryByRole('region', { name: 'Pull request panel' })).toBeNull()
+    await userEvent.click(within(detailTabs()).getByRole('tab', { name: /Pull request/i }))
+    const panel = await screen.findByRole('region', { name: 'Pull request panel' })
+    expect(panel.getAttribute('data-selected-url')).toBe('https://github.com/acme/widgets/pull/7')
+    expect(panel.textContent).toMatch(/Caps the jar/)
+    const props = stubPullRequestPanel.mock.calls.at(-1)?.[0]
+    expect(props?.sources).toEqual([{
+      url: 'https://github.com/acme/widgets/pull/7', provider: 'github', number: 7,
+      repo: 'acme/widgets', kind: 'change',
+    }])
+
+    // And back: the review is still there.
+    await userEvent.click(within(detailTabs()).getByRole('tab', { name: /Sage Review/i }))
+    expect(screen.queryByRole('region', { name: 'Pull request panel' })).toBeNull()
   })
 
-  it('never asks the host for the provider payload, which is outside its grant', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+  it('fetches the provider payload ONCE for the pane and the embedded panel', async () => {
+    // The pane's header and the embedded panel both need the payload. They share
+    // one query key precisely so opening a PR costs one provider call, not two:
+    // a private Sage key would silently double every open.
     mockApi.repoPrs.mockResolvedValue({
       repo: 'acme/widgets', count: 1, prs: [prFixture()],
     })
@@ -472,14 +527,17 @@ describe('Code Review Sage shell', () => {
     await userEvent.click(
       await screen.findByRole('button', { name: /Open pull request #7/i }),
     )
-    await screen.findByRole('heading', { name: /Tighten the cookie jar/ })
-    const paths = fetchSpy.mock.calls.map(([url]) => String(url))
-    expect(paths.filter((u) => !u.startsWith('/api/apps/code-review-sage'))).toEqual([])
+    await within(detailTabs()).findByRole('tab', { name: /Sage Review/i })
+    await userEvent.click(within(detailTabs()).getByRole('tab', { name: /Pull request/i }))
+    const panel = await screen.findByRole('region', { name: 'Pull request panel' })
+    await waitFor(() => expect(panel.textContent).toMatch(/Caps the jar/))
+    expect(core.pullRequestSource).toHaveBeenCalledTimes(1)
+    expect(core.pullRequestSource).toHaveBeenCalledWith('https://github.com/acme/widgets/pull/7')
   })
 
   it('opens a single-PR run WITH its PR context, not a bare run view', async () => {
     // Reported: clicking a review in the thread list dropped everything about
-    // the pull request. A run over one PR is that PR, so it gets the PR pane.
+    // the pull request. A run over one PR is that PR, so it gets the same tabs.
     mockApi.repoPrs.mockResolvedValue({ repo: 'acme/widgets', count: 0, prs: [] })
     mount({ runs: [run()], pool: null, reviewer: null })
     await showReviews()
@@ -487,18 +545,27 @@ describe('Code Review Sage shell', () => {
       await within(reviewsColumn())
         .findByRole('button', { name: /Review of acme\/widgets/ }),
     )
-    // The reference is derived from the run's change URL, so the pane links to
-    // the pull request even though it was never in the loaded list.
-    await waitFor(() => {
-      const out = screen.getAllByRole('link', { name: /#7/ }).map((a) => a.getAttribute('href'))
-      expect(out).toContain('https://github.com/acme/widgets/pull/7')
-    })
+    // Provider-backed context is present even though the PR was never in the
+    // loaded list: the reference is derived from the run's change URL.
+    for (const name of [/Sage Review/i, /Pull request/i]) {
+      expect(await within(detailTabs()).findByRole('tab', { name })).toBeTruthy()
+    }
+    await userEvent.click(within(detailTabs()).getByRole('tab', { name: /Pull request/i }))
+    const panel = await screen.findByRole('region', { name: 'Pull request panel' })
+    await waitFor(() => expect(panel.textContent).toMatch(/Caps the jar/))
   })
 
-  it('claims no draft when a finished run posted nothing for the change', async () => {
+  it('withholds publishing when a finished run posted nothing for the change', async () => {
     // `review.auto_post` defaults to false, so a rerun can reach `done` having
-    // delivered no draft -- and the PENDING review on the pull request is then the
-    // PREVIOUS run's. Completion is not delivery.
+    // delivered no draft, and the PENDING review on the pull request is then the
+    // PREVIOUS run's. Completion is not delivery: publishing here would submit
+    // obsolete findings irreversibly.
+    core.pullRequestPendingReview.mockResolvedValue({
+      reviewId: '4242', comments: [], body: '[code-review-sage] stale draft', commitId: 'abc',
+      headSha: 'abc', stale: false, contentRedacted: false, autoMergeArmed: false,
+      contentDigest: 'd1', staleDismissalEnabled: true,
+    })
+    // Finished, with NO posted_keys for this change.
     mockApi.repoPrs.mockResolvedValue({ repo: 'acme/widgets', count: 0, prs: [] })
     mount({ runs: [run({ posted_keys: {} })], pool: null, reviewer: null })
     await showReviews()
@@ -506,14 +573,18 @@ describe('Code Review Sage shell', () => {
       await within(reviewsColumn())
         .findByRole('button', { name: /Review of acme\/widgets/ }),
     )
-    await screen.findAllByRole('link', { name: /#7/ })
-    expect(screen.queryByText('Draft review')).toBeNull()
+    expect(await screen.findByText(/this review is still running/i)).toBeTruthy()
     for (const name of ['Submit as comment', 'Request changes', 'Approve']) {
       expect(screen.queryByRole('button', { name })).toBeNull()
     }
   })
 
-  it('points at the draft on GitHub once this run has posted for the change', async () => {
+  it('offers the verdicts once this run has posted for the change', async () => {
+    core.pullRequestPendingReview.mockResolvedValue({
+      reviewId: '4242', comments: [], body: '[code-review-sage] fresh draft', commitId: 'abc',
+      headSha: 'abc', stale: false, contentRedacted: false, autoMergeArmed: false,
+      contentDigest: 'd1', staleDismissalEnabled: true,
+    })
     mockApi.repoPrs.mockResolvedValue({ repo: 'acme/widgets', count: 0, prs: [] })
     mount({
       runs: [run({
@@ -527,9 +598,7 @@ describe('Code Review Sage shell', () => {
       await within(reviewsColumn())
         .findByRole('button', { name: /Review of acme\/widgets/ }),
     )
-    expect(await screen.findByText('Draft review')).toBeTruthy()
-    expect(screen.getByRole('link', { name: /Open on GitHub/ }).getAttribute('href'))
-      .toBe('https://github.com/acme/widgets/pull/7')
+    expect(await screen.findByRole('button', { name: 'Submit as comment' })).toBeTruthy()
   })
 
   it('marks in-flight PRs in the list and refuses to queue them again', async () => {
