@@ -1,18 +1,23 @@
-// One pull request: its header and the Sage Review.
+// One pull request, as tabs: Sage Review · Description · Comments · Checks.
 //
-// The built-in had a second tab, "Pull request", that rendered the dashboard's
-// shared `PullRequestPanel` (description, checks, comments, diff, commits) from
-// the dashboard's own PR endpoint. Neither is available to an installed app
-// (PORTING.md, "Remaining gaps"), so the pull request itself is one click away
-// on GitHub, through the header's link, and the review is the whole pane.
-import { ExternalLink, GitPullRequest, Loader2, ScanSearch } from 'lucide-react'
-import { useMemo } from 'react'
+// Sage Review leads because it is what this app is for; the other three are the
+// context you need to interpret it, which previously meant leaving for GitHub.
+// They are tabs rather than stacked sections because the description alone can
+// run for pages, stacked, the review ended up below the fold on exactly the
+// PRs where it matters most.
+//
+// Every tab reads ONE query (see usePrSource), so switching is free and no tab
+// triggers its own provider call.
+import {
+  ExternalLink, FileText, GitPullRequest, Loader2, ScanSearch,
+} from 'lucide-react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 import { useSage } from '../context'
-import { changeKey, effectiveRunStatus, relativeAge, typicalRunMs } from '../lib/format'
+import { changeKey, effectiveRunStatus, relativeAge, sageSourceLink, typicalRunMs } from '../lib/format'
 import type { PrRef, RunReport } from '../lib/types'
 import EmptyState from './EmptyState'
-import { usePrSource } from './PrSourcePanel'
+import { SourceError, usePrSource } from './PrSourcePanel'
 import ReportView from './ReportView'
 import DraftReviewActions from './DraftReviewActions'
 import FailureNotice from './FailureNotice'
@@ -22,9 +27,14 @@ import RunProgress from './RunProgress'
 import PostCommentsButton from './PostCommentsButton'
 import RunStatusPill from './RunStatusPill'
 import ShimmerLine from './ShimmerLine'
+// The App SDK's panel (seam level 2), behind this app's declared
+// `/api/source/pull-request`; `null` on a host without it (see hostSdk.ts).
+import { PullRequestPanel } from '../hostSdk'
 
 import { i18nT } from '../i18n'
 import { ErrorNotice } from '@kirocrew/app-sdk/ui'
+type Tab = 'review' | 'source'
+
 /** http(s) only: the URL is provider-derived and lands in an href. */
 function safeHref(url: string): string {
   try {
@@ -59,6 +69,43 @@ function Meta({ label, value }: { label: string; value: string }) {
   )
 }
 
+function TabButton({
+  label, icon: Icon, active, badge, badgeTone = 'muted', onClick,
+}: {
+  label: string
+  icon: typeof FileText
+  active: boolean
+  badge?: ReactNode
+  /** `alert` colours the badge when it represents something wrong (failing CI). */
+  badgeTone?: 'muted' | 'alert' | 'accent'
+  onClick: () => void
+}) {
+  const tone = badgeTone === 'alert'
+    ? 'bg-bg-elevated text-danger'
+    : badgeTone === 'accent'
+      ? 'bg-accent-subtle text-accent'
+      : 'bg-bg-elevated text-muted'
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium rounded-md cursor-pointer transition-colors ${
+        active
+          ? 'bg-bg-elevated text-text border border-border'
+          : 'bg-transparent text-muted border border-transparent hover:text-text'
+      }`}
+    >
+      <Icon size={13} aria-hidden="true" />
+      {label}
+      {badge !== undefined && badge !== null && (
+        <span className={`text-[10.5px] px-1.5 py-0.5 rounded-full ${tone}`}>{badge}</span>
+      )}
+    </button>
+  )
+}
+
 export default function PrReviewDetail({ pr }: { pr: PrRef }) {
   const {
     prRun, report, reportLoading, reportError,
@@ -66,6 +113,7 @@ export default function PrReviewDetail({ pr }: { pr: PrRef }) {
     archiveRun, archiving, archiveError, runs, postComments, postCommentGroups, dismissFinding,
     posting, postError, postingSelection,
   } = useSage()
+  const [tab, setTab] = useState<Tab>('review')
   const source = usePrSource(pr.url)
 
   const running = prRun?.status === 'running'
@@ -102,11 +150,9 @@ export default function PrReviewDetail({ pr }: { pr: PrRef }) {
   }, [report, pr.url])
 
   const src = source.data
-  // A PR opened from the thread list carries only a URL + change id. The built-in
-  // filled every display field from the provider fetch; with no provider payload
-  // here (see PrSourcePanel) the title comes from the review's own report row,
-  // which the backend wrote from the same pull request.
-  const title = pr.title || src?.title || scoped?.rows[0]?.title || `#${pr.number}`
+  // A PR opened from the thread list carries only a URL + change id, so every
+  // display field falls back to the provider fetch. Same render either way.
+  const title = pr.title || src?.title || `#${pr.number}`
   const author = pr.author || src?.author || ''
   const updatedAt = pr.updated_at || src?.updatedAt || ''
   const headSha = pr.head_sha || src?.headSha || ''
@@ -114,6 +160,8 @@ export default function PrReviewDetail({ pr }: { pr: PrRef }) {
   // just failed reads as though nothing had been attempted.
   const failed = !!prRun && effectiveRunStatus(prRun) === 'error'
   const isDraft = pr.draft ?? src?.draft ?? false
+  const failing = (src?.checks ?? []).filter((c) => c.bucket === 'failed').length
+  const findings = (scoped?.bands.red ?? 0) + (scoped?.bands.yellow ?? 0)
 
   const reviewBody = (
     <>
@@ -151,7 +199,7 @@ export default function PrReviewDetail({ pr }: { pr: PrRef }) {
         <ReportView
           report={scoped}
           // The report is where you decide the findings are worth sending, so the
-          // post control lives with it — and it is scoped to THIS pull request.
+          // post control lives with it, and it is scoped to THIS pull request.
           actions={(
             <PostCommentsButton
               run={prRun}
@@ -249,6 +297,39 @@ export default function PrReviewDetail({ pr }: { pr: PrRef }) {
     </>
   )
 
+  /** The provider-backed view of the pull request itself.
+   *
+   *  This is the SHARED `PullRequestPanel` -- the same component the chat window
+   *  renders -- rather than a Sage-local reimplementation. Sage's job is the
+   *  review layer (findings, bands, ship summary, publish); what GitHub says
+   *  about a pull request is one surface and belongs in one component. Reusing
+   *  it also brings the two sections a Sage-local pane never had: the
+   *  syntax-highlighted file diff and the commit list.
+   *
+   *  `onAddToChat` is deliberately omitted: there is no composer here, and the
+   *  panel hides its chat-handoff affordances when the callback is absent. */
+  const sourceBody = (Panel: NonNullable<typeof PullRequestPanel>) => {
+    if (source.isLoading) {
+      return <div className="text-[12.5px] text-muted">{i18nT('apps.codeReviewSage.components.prReviewDetail.loading_pull_request_details')}</div>
+    }
+    if (source.error) return <SourceError error={source.error as Error} />
+    if (!src) return null
+    const link = sageSourceLink(pr.url)
+    if (!link) return <SourceError error={new Error(pr.url)} />
+    return (
+      // The panel manages its own height; give it a definite one to scroll in.
+      <div className="flex-1 min-h-0 -mx-6 -my-5">
+        <Panel
+          sources={[link]}
+          selectedUrl={pr.url}
+          // One pull request, and the left rail already chose it, so selecting
+          // the only tab is a no-op rather than a state change to thread.
+          onSelect={() => {}}
+        />
+      </div>
+    )
+  }
+
   return (
     <article className="h-full flex flex-col min-h-0">
       <header className="px-4 md:px-6 pt-5 pb-3 border-b border-border flex-shrink-0">
@@ -317,10 +398,48 @@ export default function PrReviewDetail({ pr }: { pr: PrRef }) {
           <ErrorNotice message={(startReview.error as Error).message} variant="inline" askAgent className="mt-2" />
         )}
 
+        {/* A host without the App SDK's panel (below seam level 2) gets the
+            review alone, with the pull request one click away on GitHub. */}
+        {PullRequestPanel && (
+        <div
+          role="tablist"
+          aria-label={i18nT('apps.codeReviewSage.components.prReviewDetail.pull_request_detail')}
+          className="flex items-center gap-1 mt-3 flex-wrap"
+        >
+          <TabButton
+            label={i18nT('apps.codeReviewSage.components.prReviewDetail.sage_review')}
+            icon={ScanSearch}
+            active={tab === 'review'}
+            // A dot, not the word: "running" is already on the action button.
+            // The dot exists so an in-flight review is visible from another tab.
+            badge={running
+              ? (
+                <span
+                  aria-label={i18nT('apps.codeReviewSage.components.prReviewDetail.running')}
+                  className="inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse motion-reduce:animate-none"
+                />
+              )
+              : findings || undefined}
+            badgeTone={running ? 'accent' : findings ? 'alert' : 'muted'}
+            onClick={() => setTab('review')}
+          />
+          <TabButton
+            label={i18nT('apps.codeReviewSage.components.prReviewDetail.pull_request')}
+            icon={FileText}
+            active={tab === 'source'}
+            // What is broken is the only count worth a badge here; the panel
+            // itself carries per-section counts once you are inside it.
+            badge={src ? (failing || undefined) : undefined}
+            badgeTone={failing ? 'alert' : 'muted'}
+            onClick={() => setTab('source')}
+          />
+        </div>
+        )}
       </header>
 
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none px-4 md:px-6 py-5 flex flex-col gap-5">
-        {reviewBody}
+        {(tab === 'review' || !PullRequestPanel) && reviewBody}
+        {tab === 'source' && PullRequestPanel && sourceBody(PullRequestPanel)}
       </div>
     </article>
   )

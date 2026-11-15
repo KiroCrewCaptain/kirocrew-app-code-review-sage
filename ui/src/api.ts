@@ -27,6 +27,7 @@ import type {
   SettingsResponse,
   UserReposResponse,
 } from './lib/types'
+import type { PullRequestSource } from './host/types'
 
 const API = '/api/apps/code-review-sage'
 
@@ -262,4 +263,94 @@ export const sageApi = {
    *  merge itself is one worker turn; this returns as soon as it is running. */
   consolidateLearnings: (namespace: string): Promise<ConsolidateResponse> =>
     sendJSON('/learnings/consolidate', 'POST', { namespace }),
+}
+
+// --- The dashboard's pull-request endpoints ---------------------------------
+//
+// The detail pane's header, its "Pull request" tab and the publish bar read and
+// act on the pull request through the dashboard's own `/api/source/pull-request`
+// family, as the built-in page did (`api.pullRequestSource`,
+// `api.pullRequestPendingReview`, `api.submitPullRequestReview`). Every path is a
+// child of the declared `/api/source/pull-request` (`permissions.api`), so the
+// scoped client admits them; the gateway serves them only to the owner's
+// session. Each body is the one the dashboard's client sends.
+
+/** The read every member below is a child of. */
+export const PULL_REQUEST_SOURCE_PATH = '/api/source/pull-request'
+
+/** A pending (draft) review on the pull request, as the gateway reads it. */
+export interface PendingReview {
+  reviewId: string
+  body: string
+  comments?: { path: string; line: number | null; body: string }[]
+  commitId: string
+  headSha: string
+  stale: boolean
+  contentRedacted: boolean
+  autoMergeArmed: boolean
+  contentDigest: string
+  staleDismissalEnabled: boolean
+}
+
+export type PublishEvent = 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT'
+
+/** A refused source call, shaped like the dashboard client's error: the
+ *  gateway's `error` sentence as the message, with the status and the raw body
+ *  kept so `pullRequestErrorDetails` can read the structured markers (sign-in
+ *  command, confirmation, busy) back out of it. */
+export class SourceApiError extends Error {
+  readonly status: number
+  readonly body: string
+
+  constructor(status: number, body: string) {
+    let message = `HTTP ${status}`
+    try {
+      const parsed = JSON.parse(body) as { error?: unknown }
+      if (typeof parsed.error === 'string' && parsed.error) message = parsed.error
+    } catch {
+      if (body.trim()) message = body.trim()
+    }
+    super(message)
+    this.name = 'SourceApiError'
+    this.status = status
+    this.body = body
+  }
+}
+
+async function sourcePost<T>(path: string, body: unknown): Promise<T> {
+  let r: Response
+  try {
+    r = await transport.raw(path, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch (err) {
+    if (err && typeof err === 'object' && typeof (err as { status?: unknown }).status === 'number') {
+      const raw = (err as { body?: unknown }).body
+      throw new SourceApiError((err as { status: number }).status, typeof raw === 'string' ? raw : '')
+    }
+    throw err
+  }
+  if (!r.ok) throw new SourceApiError(r.status, await r.text().catch(() => ''))
+  return r.json() as Promise<T>
+}
+
+export const sourceApi = {
+  /** The provider payload of one pull request (`refresh` bypasses the
+   *  gateway's short cache). */
+  pullRequestSource: (url: string, refresh = false): Promise<PullRequestSource> =>
+    sourcePost(PULL_REQUEST_SOURCE_PATH, { url, refresh }),
+
+  /** The pending review on the pull request, if any. */
+  pullRequestPendingReview: (url: string): Promise<PendingReview> =>
+    sourcePost(`${PULL_REQUEST_SOURCE_PATH}/pending-review`, { url }),
+
+  /** Publish the pending review with a verdict, bound to the digest of the
+   *  content that was shown. */
+  submitPullRequestReview: (
+    url: string, reviewId: string, event: PublishEvent, contentDigest: string,
+  ): Promise<{ submitted: boolean; event: string }> =>
+    sourcePost(`${PULL_REQUEST_SOURCE_PATH}/submit-review`, { url, reviewId, event, contentDigest }),
 }

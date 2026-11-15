@@ -30,10 +30,12 @@ change here.
 
 ## What carried over unchanged
 
-- `app.json` `name` (`code-review-sage`), `version` (`0.9.3`), `author`,
+- `app.json` `name` (`code-review-sage`), `version` (`0.9.4`, the version the wheel
+  built-in carries once Kiro Crew pins this release), `author`,
   `permissions` (`api: ["/api/apps/code-review-sage", "/api/apps/code-review-sage/*",
   "/api/source/pull-request"]`, `network`, `storage`; the last `api` entry is the
-  one kirodotdev/KiroCrew#36343 adds to the built-in's own manifest, see gaps 2 and 3), `dependencies` (`commands: ["gh"]`), `platform`,
+  one kirodotdev/KiroCrew#36343 adds to the built-in's own manifest, which the
+  pull-request tab and the publish bar call, see gaps 2 and 3), `dependencies` (`commands: ["gh"]`), `platform`,
   `defaultEnabled: false`, `skills`, and every display field. 
   `tests/test_manifest_contract.py` compares them with the built-in's manifest
   (`tests/fixtures/builtin-app.json`), because adoption refuses a manifest that
@@ -89,8 +91,9 @@ change here.
 | `ui.pages` `[{"route": "/code-review-sage", "label": "Code Review Sage", "icon": "ScanSearch"}]`, page compiled into the dashboard (`website/src/apps/builtinRegistry.ts`) | `ui.entry: "dist/index.mjs"` (a committed ESM bundle built from `ui/src/`), `ui.pages` `[{"route": "/apps/code-review-sage", "label": "Code Review Sage"}]`, no `icon` | An installed app ships its page as a bundle AppHost loads. The legacy `/code-review-sage` route and `ScanSearch` glyph of an adopted record come from Kiro Crew's adoption pin, never from this manifest. |
 | App Store copy keys in the dashboard catalogs (`website/src/components/appstore/appManifest.ts:143-156`) | `l10n` block in `app.json` for the 11 non-English locales | The listing copy travels with the app: the `apps.codeReviewSage.manifest` subtree of `ui/i18n/<locale>.json`, kept equal by a test. |
 | No `minKiroCrewVersion`, no `license` | `"minKiroCrewVersion": "0.13.0"`, `"license": "Apache-2.0"` | 0.13.0 is the first release line with App Kit level 1; a 0.12.x route registry skips every record that is not its own `AppRoute`, so every route of this app would answer 404 there. |
-| The rail header showed a fixed `v2.0` (`website/src/apps/code-review-sage/components/RailHeader.tsx:24`) | `v` + `app.json` `version`, imported from the manifest at build time (`ui/tests/SageRailHeaderCov80.test.tsx` reads the same field) | The page named a version the app never had; the listing says 0.9.3, so the header must too. |
+| The rail header showed a fixed `v2.0` (`website/src/apps/code-review-sage/components/RailHeader.tsx:24`) | `v` + `app.json` `version`, imported from the manifest at build time (`ui/tests/SageRailHeaderCov80.test.tsx` reads the same field) | The page named a version the app never had; the listing says the manifest's version, so the header must too. |
 | `GET /runs` reported the pool's static default cap (5) until the first review created the pool (`sage_lib/review_pool.py:966-974`, `backend/routes_parts/review_runs.py:591`) | With no batch running, `max` is the configured **Reviews at once** (`effective_max_concurrent()`, read off the loop) | The progress panel read "0 of 5 reviewers busy" for a review that then ran one at a time (`tests/test_backend_routes.py::test_runs_reports_the_configured_cap_before_the_first_review`). |
+| A built-in that ran a review has `.kiro/settings/cli.json` in its record's folder, beside `app.json`: the review worker's Kiro CLI workspace settings (`sage_lib/review_pool.py` `_write_effort_overlay`, written into the worker's working directory, the app's folder) | The tree ships `.kiro/` (`.kiro/README.md`; `.kiro/settings/` is ignored) | Adoption refuses to swap a record whose folder holds an entry beside `app.json` that nothing rebuilds and the pinned tree does not ship, so every user who had run a review would have stayed on the built-in. An entry the tree ships is replaced, as an update replaces it, and the next review writes the settings again (`tests/test_adoptable_root.py`). |
 | The Japanese third highlight said findings are posted as a pending draft GitHub review you submit (`website/src/i18n/locales/ja.json:1157`) | Translated from the English highlight: reviews are read in the app and nothing is posted unless you ask (`app.json` `l10n.ja`, `ui/i18n/ja.json`) | Every other locale says what the English says; this one described a different behaviour. |
 
 ## Host services without a seam: looked up by name, fail closed
@@ -136,35 +139,34 @@ above), refuses. `register_routes` reports what is missing through `ctx.health`
    adoption pin must wait for a seam**: for example `openChat` creating a missing
    `slotKey` with an agent, a title, a folder and a memory mode, under the app's
    identity.
-2. **The pull request's own view is gone from the page.** The built-in's detail
-   pane had a "Pull request" tab rendering the dashboard's shared
-   `PullRequestPanel` (description, checks, comments, the file diff, commits) and
-   header chips (open/merged, mergeable, failing checks), all from the
-   dashboard's `/api/source/pull-request` (`components/PrReviewDetail.tsx:30`,
-   `:300-330`, `components/PrSourcePanel.tsx:47`). Neither the endpoint (outside
-   the grant) nor the component (not in the App SDK) is available. This copy
-   shows the review and links the pull request out to GitHub; the title falls
-   back to the review's own report row. **What is left is page work here.** The
-   App SDK exports the dashboard's `PullRequestPanel` since seam level 2, behind a
-   declared `/api/source/pull-request`, and kirodotdev/KiroCrew#36343 (owner ruling on Kiro
-   Crew #26967: an app gets what its built-in already uses) declares that entry in
-   the built-in's manifest, which every existing user's record approves before the
-   pin. This `app.json` declares the same list, so adoption is no widening
-   (`permission_refusal` answers `None` on that change). The tab and the header
-   chips can come back by rendering the SDK panel (feature-detected on
-   `APP_SDK_LEVEL >= 2`) and reading the payload through the scoped client;
-   adoption waits for that port.
-3. **Publishing the draft review moved to GitHub.** The built-in's publish bar
-   (Approve / Request changes / Submit as comment) read the pending review and
-   submitted it through the dashboard's `/api/source/pull-request/pending-review`
-   and its submit, bound to the draft's content digest
-   (`components/DraftReviewActions.tsx:53-62`). This copy keeps the built-in's
-   delivery-evidence gate and, when this run did stage a draft, says so and links
-   to the pull request, where GitHub's own form publishes it. The grant is in
-   place (gap 2): `pending-review` and `submit-review` are children of the
-   declared `/api/source/pull-request`, so the publish bar can come back on the
-   scoped client with the built-in's request bodies. **Adoption waits for** that
-   port.
+2. **The pull request's own view: closed.** The built-in's detail pane had a
+   "Pull request" tab rendering the dashboard's shared `PullRequestPanel`
+   (description, checks, comments, the file diff, commits) and header chips
+   (open/merged, mergeable, failing checks), all from the dashboard's
+   `/api/source/pull-request` (`components/PrReviewDetail.tsx`,
+   `components/PrSourcePanel.tsx`). This copy has the same tab and chips: the
+   panel is the App SDK's `PullRequestPanel` (seam level 2,
+   kirodotdev/KiroCrew#32665), feature-detected in `ui/src/hostSdk.ts`, and the
+   payload is read with the dashboard client's body through the host's scoped
+   client (`sourceApi.pullRequestSource` in `ui/src/api.ts`), under the panel's
+   own query key so the header and the tab share one request. The manifest
+   declares `/api/source/pull-request`, which kirodotdev/KiroCrew#36343 (owner
+   ruling on Kiro Crew #26967: an app gets what its built-in already uses) also
+   declares in the built-in's manifest, so adoption is no widening
+   (`permission_refusal` answers `None`). On a host without the SDK panel the
+   pane shows the review alone and links the pull request out to GitHub.
+3. **Publishing the draft review: closed.** The built-in's publish bar (Approve
+   / Request changes / Submit as comment, two clicks, bound to the draft's
+   content digest, `components/DraftReviewActions.tsx`) is back, with every
+   guard it had: the delivery-evidence and superseded-draft gates, the
+   redacted-content and stale-head refusals, Approve withheld while auto-merge is
+   armed or the base branch keeps stale approvals. It reads the pending review
+   and submits it through the dashboard's `/api/source/pull-request/pending-review`
+   and `/submit-review` on the scoped client (`sourceApi` in `ui/src/api.ts`),
+   with the dashboard client's request bodies; both are children of the declared
+   `/api/source/pull-request`. A refusal keeps the gateway's sentence and its raw
+   body (`SourceApiError`), so the sign-in hint and the other markers read the
+   same as on the built-in.
 4. **The review worker is driven through Kiro Crew's private ACP runtime** (see
    the table above). A refactor of `AcpRuntime`, the permission floor, the SEL
    or the admission gate can break reviews silently; `minKiroCrewVersion`, the
@@ -269,7 +271,7 @@ capture/                # README media: scenes, harness, the stand-in gh
 ## UI
 
 The page is `ui/src/`, ported from `website/src/apps/code-review-sage/` with the
-same markup, class strings and behaviour except where gaps 1-3 removed a host
+same markup, class strings and behaviour except where gap 1 removed a host
 surface. `npm run build` in `ui/` writes the committed `ui/dist/index.mjs`; CI
 rebuilds it and fails on a difference. Every request goes through the host's
 scoped client (`useAppApi().raw`, handed to `setTransport` by the root), so a
@@ -297,7 +299,9 @@ the progress. The effect now waits for the re-read
 | `components/ui/dropdown-menu` (Radix), `hooks/useDialogFocusTrap`, `hooks/useColumnResize` / `usePointerDrag` / `useIsMobile`, `components/ResizeHandle`, `ListDetailBack`, `Tablist.useRovingTabs`, `components/ui.IconButton`, `icons/GithubLogo` | `ui/src/host/` (gap 10) |
 | `framer-motion` on the add-repos dialog | No animation (the host does not provide the library) |
 | `react-router-dom` `useSearchParams` / `useNavigate` | `?run=` read off `window.location`; the host's chat launcher |
-| `api.createChatSlot`, `api.pullRequestSource`, `api.pullRequestPendingReview` / `submitPullRequestReview`, `PullRequestPanel` | Gaps 1-3 |
+| `api.pullRequestSource`, `api.pullRequestPendingReview` / `submitPullRequestReview` | `sourceApi` in `ui/src/api.ts`, the same paths and bodies over the scoped client (gaps 2 and 3, closed) |
+| `PullRequestPanel` from `app-sdk` | The App SDK's `PullRequestPanel`, read through `ui/src/hostSdk.ts` (level 2); without it the review alone |
+| `api.createChatSlot` | Gap 1 |
 | `i18n/t.i18nT` with keys in the dashboard's catalogs | `ui/src/i18n.ts` over the app's own catalogs |
 
 ## Tests
@@ -311,7 +315,7 @@ the progress. The effect now waits for the re-read
 | The sage cases of `test/test_instance_credential_pairing.py` | `tests/test_review_driver_credential_pairing.py` | Plus: a host without the resolver sends no credential. |
 | The sage cases of `test/test_chat_folder_created_at.py`, `test_windows_replace_retry_sweep.py`, `test_security_source_scan_invariants.py`, `test_transport_permission_floor.py`, `test_surface_deny_notice_sites.py` | `tests/test_ported_core_cases.py` | The same assertions over this repository's files. |
 | (none) | `tests/test_host_seams.py`, `tests/test_no_host_imports.py`, `tests/test_manifest_contract.py` | Every fail-closed path above and the capability report; only `_host` lookups reach `kiro_crew`; manifest parity, the skills' digests, the bundle's imports, the hooks loading through the gateway's module loader, no hardcoded model id, an adoptable tree. |
-| `website/src/test/CodeReviewSage*`, `codeReviewSage*`, `Sage*`, `api.coverage.test.ts` | `ui/tests/`, same names | Run by vitest on jsdom with stand-ins for the host SDK (`ui/tests/stubs/`, plus a router and catalog stand-in). The selects are native in the stand-in; `CodeReviewSagePublish`, `CodeReviewSagePrSource`, `CodeReviewSageReviewChat` and five cases of `CodeReviewSageShell` were rewritten for gaps 1-3. |
+| `website/src/test/CodeReviewSage*`, `codeReviewSage*`, `Sage*`, `api.coverage.test.ts` | `ui/tests/`, same names | Run by vitest on jsdom with stand-ins for the host SDK (`ui/tests/stubs/`, plus a router and catalog stand-in). The selects are native in the stand-in, and the SDK's `PullRequestPanel` is a stand-in that renders what it finds under the shared query key. `CodeReviewSagePublish`, `CodeReviewSagePrSource` and the pull-request cases of `CodeReviewSageShell` are the built-in's, over `sourceApi`; `CodeReviewSageReviewChat` was rewritten for gap 1. |
 | (none) | `ui/tests/externalSeams.test.tsx` | Catalog coverage and fallback, the scoped transport and its error mapping, the menu and focus-trap stand-ins, the older-host fallbacks. |
 
 ## What Kiro Crew keeps doing
@@ -319,7 +323,7 @@ the progress. The effect now waits for the re-read
 The release that adds adoption still ships the built-in. A user's built-in
 record moves onto this repository at the commit Kiro Crew pins, on the restart
 after the tree is fetched and verified; a record that cannot move keeps running
-the built-in copy, unchanged. For this app the pin waits on gaps 1-3.
+the built-in copy, unchanged. For this app the pin waits on gap 1.
 
 ## Release handoff: one commit for both pins
 
@@ -328,7 +332,7 @@ must be the ported tree.
 
 1. Call the full 40-hex SHA of this repository's `main` `C`
    (`git rev-parse HEAD`).
-2. In the Kiro Crew release PR that adds adoption, once gaps 1-3 are closed, run
+2. In the Kiro Crew release PR that adds adoption, once gap 1 is closed, run
    `python3 scripts/adoption_pin.py compute <this URL> C` and add the row it
    prints (commit, `treeSha256`, `archiveSha256`, `legacyNav`) to
    `src/kiro_crew/apps/adoption-pins.json`; then

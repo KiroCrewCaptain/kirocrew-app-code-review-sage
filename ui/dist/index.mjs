@@ -1,6 +1,7 @@
+import * as sdk from "@kirocrew/app-sdk";
 import { activeLocale, compareText, fmtDateTime, useAppApi, useChatLauncher, useImeGuard, useLanguageGeneration, useNavigate } from "@kirocrew/app-sdk";
 import { Children, cloneElement, createContext, forwardRef, isValidElement, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { AlertCircle, AlertTriangle, ArrowLeft, Brain, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleSlash, ClipboardCheck, ClipboardList, ClipboardPaste, Clock, ExternalLink, EyeOff, FolderGit2, GitBranch, GitMerge, GitPullRequest, Inbox, Link2, ListChecks, Loader2, Lock, MessageCircle, MessageSquarePlus, PanelLeftClose, Plus, RefreshCw, RotateCcw, ScanSearch, Search, Settings, Share2, ShieldCheck, ShipWheel, Star, Tag, Trash2, TriangleAlert, Wand2, X, XCircle, XOctagon } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowLeft, Brain, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleSlash, ClipboardCheck, ClipboardList, ClipboardPaste, Clock, ExternalLink, EyeOff, FileText, FolderGit2, GitBranch, GitMerge, GitPullRequest, Inbox, Link2, ListChecks, Loader2, Lock, MessageCircle, MessageSquarePlus, PanelLeftClose, Plus, RefreshCw, RotateCcw, ScanSearch, Search, Send, Settings, Share2, ShieldCheck, ShipWheel, Star, Tag, Trash2, TriangleAlert, Wand2, X, XCircle, XOctagon } from "lucide-react";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ui from "@kirocrew/app-sdk/ui";
@@ -166,6 +167,66 @@ var sageApi = {
 	/** Merge a namespace's staged learnings into the ruleset reviews load. The
 	*  merge itself is one worker turn; this returns as soon as it is running. */
 	consolidateLearnings: (namespace) => sendJSON("/learnings/consolidate", "POST", { namespace })
+};
+/** The read every member below is a child of. */
+var PULL_REQUEST_SOURCE_PATH = "/api/source/pull-request";
+/** A refused source call, shaped like the dashboard client's error: the
+*  gateway's `error` sentence as the message, with the status and the raw body
+*  kept so `pullRequestErrorDetails` can read the structured markers (sign-in
+*  command, confirmation, busy) back out of it. */
+var SourceApiError = class extends Error {
+	status;
+	body;
+	constructor(status, body) {
+		let message = `HTTP ${status}`;
+		try {
+			const parsed = JSON.parse(body);
+			if (typeof parsed.error === "string" && parsed.error) message = parsed.error;
+		} catch {
+			if (body.trim()) message = body.trim();
+		}
+		super(message);
+		this.name = "SourceApiError";
+		this.status = status;
+		this.body = body;
+	}
+};
+async function sourcePost(path, body) {
+	let r;
+	try {
+		r = await transport.raw(path, {
+			method: "POST",
+			credentials: "same-origin",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body)
+		});
+	} catch (err) {
+		if (err && typeof err === "object" && typeof err.status === "number") {
+			const raw = err.body;
+			throw new SourceApiError(err.status, typeof raw === "string" ? raw : "");
+		}
+		throw err;
+	}
+	if (!r.ok) throw new SourceApiError(r.status, await r.text().catch(() => ""));
+	return r.json();
+}
+var sourceApi = {
+	/** The provider payload of one pull request (`refresh` bypasses the
+	*  gateway's short cache). */
+	pullRequestSource: (url, refresh = false) => sourcePost(PULL_REQUEST_SOURCE_PATH, {
+		url,
+		refresh
+	}),
+	/** The pending review on the pull request, if any. */
+	pullRequestPendingReview: (url) => sourcePost(`${PULL_REQUEST_SOURCE_PATH}/pending-review`, { url }),
+	/** Publish the pending review with a verdict, bound to the digest of the
+	*  content that was shown. */
+	submitPullRequestReview: (url, reviewId, event, contentDigest) => sourcePost(`${PULL_REQUEST_SOURCE_PATH}/submit-review`, {
+		url,
+		reviewId,
+		event,
+		contentDigest
+	})
 };
 // src/host/cn.ts
 /** Join class names, dropping empty ones (the dashboard's `cn` also merges Tailwind
@@ -1134,6 +1195,24 @@ function failureReason(run, changeId) {
 	return {
 		text: raw,
 		raw
+	};
+}
+/** Build the `PullRequestLink` the shared `PullRequestPanel` expects from a Sage
+*  change URL, or `null` when the URL is not a GitHub pull request.
+*
+*  Parsing rather than trusting: the URL reaches the panel, which puts it in an
+*  `href` and in provider calls, so a shape that does not match a pull request is
+*  refused here instead of being rendered.
+*/
+function sageSourceLink(url) {
+	const m = url.match(/^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)$/);
+	if (!m) return null;
+	return {
+		url,
+		provider: "github",
+		number: Number(m[3]),
+		repo: `${m[1]}/${m[2]}`,
+		kind: "change"
 	};
 }
 // src/lib/layout.ts
@@ -3213,6 +3292,11 @@ var Select = ("Select" in ui ? ui.Select : void 0) ?? NativeSelect;
 *  or no marker on a host without it (the control works the same; the guide just
 *  does not pause on it). */
 var guideCaution = ("guideCaution" in ui ? ui.guideCaution : void 0) ?? {};
+/** The dashboard's pull-request panel (App Kit seam level 2), or `null` on a
+*  host without it. The host builds it over this app's scoped client once
+*  `permissions.api` declares `/api/source/pull-request`, and refuses it
+*  otherwise; without the export the detail pane shows the review alone. */
+var PullRequestPanel = ("PullRequestPanel" in sdk ? sdk.PullRequestPanel : void 0) ?? null;
 // src/components/LearningRail.tsx
 /** A refused namespace name is explained in the app's language; the backend's
 *  English is for logs. The name is the namespace's folder, so it stays a
@@ -3519,7 +3603,7 @@ function RailHeader({ leading, narrow = false, onReselect }) {
 			}),
 			!narrow && /* @__PURE__ */ jsx("span", {
 				className: "flex-shrink-0 text-[12px] text-muted opacity-70",
-				children: i18nT("apps.codeReviewSage.components.leftRail.version", { version: "0.9.3" })
+				children: i18nT("apps.codeReviewSage.components.leftRail.version", { version: "0.9.4" })
 			}),
 			/* @__PURE__ */ jsx("nav", {
 				className: "ml-auto flex items-center gap-0.5 flex-shrink-0",
@@ -3756,12 +3840,47 @@ function LeftRail({ narrow = false, onCollapse }) {
 	});
 }
 // src/components/PrSourcePanel.tsx
-/** The provider payload for one pull request: never fetched here (see above). */
+/** The server's own cache TTL is short; match it rather than hammering. */
+var SOURCE_STALE_MS = 3e4;
+/** The provider payload for one pull request.
+*
+* Deliberately keyed the SAME as the shared `PullRequestPanel`'s own query
+* (`['pull-request-source', url]`) rather than under a Sage-private key. The
+* detail pane renders that panel, so a private key would make the two observers
+* separate cache entries and fetch the identical payload twice per open. One key
+* means one entry, one in-flight request, and an invalidation from either side
+* (publishing a review, refreshing the panel) refreshes both.
+*
+* Seeded from the last successful payload with its ORIGINAL fetch timestamp, so
+* reopening a pull request paints its header and threads at once and revalidates
+* behind them. The timestamp is what makes that work: without it the replay would
+* look freshly fetched and suppress the refetch for the whole staleTime window,
+* leaving you reading a payload that never refreshed. */
 function usePrSource(url) {
-	return useQuery({
+	const snapshot = useMemo(() => url ? readSnapshot(`pr-source:${url}`) : void 0, [url]);
+	const query = useQuery({
 		queryKey: ["pull-request-source", url],
-		queryFn: () => Promise.reject(/* @__PURE__ */ new Error("no pull request payload for an app")),
-		enabled: false
+		queryFn: () => sourceApi.pullRequestSource(url),
+		staleTime: SOURCE_STALE_MS,
+		initialData: snapshot?.data,
+		initialDataUpdatedAt: snapshot?.at
+	});
+	useEffect(() => {
+		if (url && query.data && query.isSuccess) writeSnapshot(`pr-source:${url}`, query.data);
+	}, [
+		url,
+		query.data,
+		query.isSuccess
+	]);
+	return query;
+}
+/** Label keys as full literals in one indexable map, so the key-resolution
+*  gate can verify each one exists. Indexed at the call site, not read off a
+*  local, that indirection is what made these sites unverifiable. */
+function SourceError({ error }) {
+	return /* @__PURE__ */ jsx("div", {
+		className: "text-[12.5px] text-muted",
+		children: i18nT("apps.codeReviewSage.components.prSourcePanel.load_failed", { reason: error.message })
 	});
 }
 // src/host/safeUrl.ts
@@ -4632,30 +4751,253 @@ function ReportView({ report, onArchive, archiving = false, archiveError = null,
 		]
 	});
 }
+// src/host/pullRequestErrors.ts
+/**
+* Shared parsing for provider (pull-request / issue) API failures.
+*
+* The api client unwraps error envelopes into a human message, which discards
+* every other field; the raw body survives on `ApiError.body`, and this is the
+* single place that reads the machine-readable markers back out of it. Every
+* surface that renders a provider-mutation failure (the Changes panel actions,
+* review threads, Code Review Sage publishing) routes through here so a coded
+* refusal reads the same everywhere instead of only on the surface that
+* happened to be fixed first.
+*/
+/** A vault secret name as the gateway ships it: one of the two Bitbucket Server
+*  token names, `BITBUCKET_SERVER_TOKEN` or `BITBUCKET_SERVER_TOKEN_<HEX>` (whole
+*  upper-case hex bytes, up to the length a per-host name reaches for the longest
+*  listable host). Any other upper-case word could be an opaque token. */
+var SECRET_NAME_RE = /^BITBUCKET_SERVER_TOKEN(?:_(?:[0-9A-F]{2}){1,259})?$/;
+/** True for the one sign-in command shape the gateway builds from its own
+* allowlisted host: `gh auth login --hostname <host>` or `glab auth login
+* --hostname <host>`, one host token and nothing after it. Every surface that
+* renders a `loginCommand` as copyable accepts it only through this check (the
+* PR-mutation envelope below and Issue Radar's coded error envelope in
+* `apps/issue-radar/apiTypes.ts`), so a provider-controlled body cannot
+* smuggle arbitrary text into the command. */
+function isHostScopedLoginCommand(value) {
+	return typeof value === "string" && /^(?:gh|glab) auth login --hostname \S+$/.test(value);
+}
+function pullRequestErrorDetails(error) {
+	let message = error instanceof Error ? error.message : String(error || "");
+	let confirmationRequired = false;
+	let sourceBusy = false;
+	let hostScoped = "";
+	let secretName = "";
+	const raw = typeof error?.body === "string" ? error.body : message;
+	try {
+		const payload = JSON.parse(raw);
+		if (typeof payload.error === "string") message = payload.error;
+		if (isHostScopedLoginCommand(payload.loginCommand)) hostScoped = payload.loginCommand;
+		if (typeof payload.secretName === "string" && SECRET_NAME_RE.test(payload.secretName)) secretName = payload.secretName;
+		confirmationRequired = payload.confirmationRequired === true;
+		sourceBusy = payload.code === "source_busy";
+	} catch {}
+	const authenticationFailure = /\b(?:not logged in(?:to)?|unauthenticated|authentication (?:failed|required)|requires authentication|401 unauthorized|http 401)\b/i.test(message);
+	const loginCommand = hostScoped ? hostScoped : authenticationFailure && /(?:`|\b)gh auth login(?:`|\b)/i.test(message) ? "gh auth login" : authenticationFailure && /(?:`|\b)glab auth login(?:`|\b)/i.test(message) ? "glab auth login" : "";
+	return {
+		message,
+		loginCommand,
+		confirmationRequired,
+		sourceBusy,
+		secretName
+	};
+}
+// src/host/focusOnMount.ts
+/**
+* Callback ref that focuses its element once, when the element mounts.
+*
+* Pass it as `ref={focusOnMount}`. It is one function for the whole app, so
+* React calls it only when the element attaches or detaches. An inline
+* `ref={el => el?.focus()}` is a NEW function on every render, so React calls
+* it again on every render: any state change (ticking a checkbox, a refetch)
+* pulls focus back to that element and breaks the user's Tab position.
+*/
+function focusOnMount(el) {
+	el?.focus();
+}
 // src/components/DraftReviewActions.tsx
-function DraftReviewActions({ url, draftDelivered }) {
-	const href = safeHttpUrl(url);
-	if (!draftDelivered || !href) return null;
-	return /* @__PURE__ */ jsxs("section", {
-		className: "rounded-md border border-border px-3 py-2.5 flex flex-col gap-1.5",
+var PUBLISH_EVENTS = [
+	"COMMENT",
+	"REQUEST_CHANGES",
+	"APPROVE"
+];
+var PUBLISH_LABEL_KEY = {
+	COMMENT: "apps.codeReviewSage.components.draftReviewActions.submit_as_comment",
+	REQUEST_CHANGES: "apps.codeReviewSage.components.draftReviewActions.request_changes",
+	APPROVE: "apps.codeReviewSage.components.draftReviewActions.approve"
+};
+var PUBLISHED_VERDICT_KEY = {
+	COMMENT: "apps.codeReviewSage.components.draftReviewActions.published_verdict_comment",
+	REQUEST_CHANGES: "apps.codeReviewSage.components.draftReviewActions.published_verdict_changes_requested",
+	APPROVE: "apps.codeReviewSage.components.draftReviewActions.published_verdict_approved"
+};
+/** The confirmation restates the verdict: a second click on a generic "Confirm"
+*  proves the user clicked twice, not that they meant THIS verdict. */
+var PUBLISH_CONFIRM_KEY = {
+	COMMENT: "apps.codeReviewSage.components.draftReviewActions.confirm_submit_as_comment",
+	REQUEST_CHANGES: "apps.codeReviewSage.components.draftReviewActions.confirm_request_changes",
+	APPROVE: "apps.codeReviewSage.components.draftReviewActions.confirm_approve"
+};
+function DraftReviewActions({ url, draftDelivered, expectedReviewId = "" }) {
+	const qc = useQueryClient();
+	const [done, setDone] = useState(null);
+	const [confirming, setConfirming] = useState(null);
+	const { data, isLoading, error, refetch, isFetching } = useQuery({
+		queryKey: ["code-review-sage-draft", url],
+		queryFn: () => sourceApi.pullRequestPendingReview(url),
+		retry: false
+	});
+	const publishMut = useMutation({
+		mutationFn: (event) => sourceApi.submitPullRequestReview(url, data?.reviewId || "", event, data?.contentDigest || ""),
+		onSuccess: (_r, event) => {
+			setDone(event);
+			qc.invalidateQueries({ queryKey: ["code-review-sage-draft", url] });
+			qc.invalidateQueries({ queryKey: ["pull-request-source", url] });
+		}
+	});
+	useEffect(() => {
+		setDone(null);
+		setConfirming(null);
+	}, [url]);
+	if (isLoading) return null;
+	const err = (publishMut.isError ? pullRequestErrorDetails(publishMut.error) : null)?.message ?? "";
+	const supersededDraft = draftDelivered && !!data && (!expectedReviewId || data.reviewId !== expectedReviewId);
+	const blocked = !draftDelivered || supersededDraft || !!data && (data.contentRedacted || data.stale);
+	const approveWithheld = !!data && (data.autoMergeArmed || !data.staleDismissalEnabled);
+	if (done) return /* @__PURE__ */ jsxs("div", {
+		className: "border border-border rounded-md p-3 mt-3 text-xs text-muted",
 		children: [
-			/* @__PURE__ */ jsx("div", {
-				className: "text-[12.5px] font-medium text-text",
-				children: i18nT("apps.codeReviewSage.components.draftReviewActions.draft_review")
+			i18nT("apps.codeReviewSage.components.draftReviewActions.published_as"),
+			" ",
+			/* @__PURE__ */ jsx("span", {
+				className: "text-text",
+				children: i18nT(PUBLISHED_VERDICT_KEY[done])
+			})
+		]
+	});
+	return /* @__PURE__ */ jsxs("div", {
+		className: "border border-border rounded-md p-3 mt-3",
+		children: [
+			/* @__PURE__ */ jsxs("div", {
+				className: "text-[13px] font-medium flex items-center gap-1.5",
+				children: [
+					/* @__PURE__ */ jsx(Send, { size: 13 }),
+					" ",
+					i18nT("apps.codeReviewSage.components.draftReviewActions.draft_review")
+				]
 			}),
-			/* @__PURE__ */ jsx("div", {
-				className: "text-[12px] leading-[1.6] text-muted",
-				children: i18nT("apps.codeReviewSage.components.draftReviewActions.pending_only_you_can_see_it_until_you_publish")
-			}),
-			/* @__PURE__ */ jsxs("a", {
-				href,
-				target: "_blank",
-				rel: "noreferrer",
-				className: "inline-flex w-fit items-center gap-1 text-[12.5px] text-accent hover:underline",
-				children: [i18nT("apps.codeReviewSage.components.prReviewDetail.open_on_github"), /* @__PURE__ */ jsx(ExternalLink, {
-					size: 11,
-					"aria-hidden": "true"
+			error ? /* @__PURE__ */ jsxs("div", {
+				className: "text-xs mt-2",
+				children: [/* @__PURE__ */ jsx("div", {
+					className: "text-warn leading-relaxed",
+					children: i18nT("apps.codeReviewSage.components.draftReviewActions.couldn_t_check_for_a_draft_review_on_this_pull_r")
+				}), /* @__PURE__ */ jsx("button", {
+					onClick: () => {
+						refetch();
+					},
+					disabled: isFetching,
+					className: "text-xs px-2.5 py-1.5 mt-2 rounded-md border border-border text-muted hover:text-text hover:border-border-strong disabled:opacity-30 cursor-pointer bg-transparent",
+					children: i18nT("apps.codeReviewSage.components.draftReviewActions.try_again")
 				})]
+			}) : !data?.reviewId ? /* @__PURE__ */ jsx("div", {
+				className: "text-muted text-xs mt-2",
+				children: i18nT("apps.codeReviewSage.components.draftReviewActions.no_draft_review_on_this_pull_request")
+			}) : /* @__PURE__ */ jsxs(Fragment, { children: [
+				/* @__PURE__ */ jsx("div", {
+					className: "text-muted text-[11px] mt-1.5",
+					children: i18nT("apps.codeReviewSage.components.draftReviewActions.pending_only_you_can_see_it_until_you_publish")
+				}),
+				/* @__PURE__ */ jsx("div", {
+					className: "mt-2.5 border border-border rounded-md px-2.5 py-2 max-h-48 overflow-auto text-xs text-text whitespace-pre-wrap break-words font-mono",
+					children: data.body || /* @__PURE__ */ jsx("span", {
+						className: "text-muted",
+						children: i18nT("apps.codeReviewSage.components.draftReviewActions.this_draft_has_no_summary_body")
+					})
+				}),
+				(data.comments ?? []).length > 0 && /* @__PURE__ */ jsx("div", {
+					className: "mt-1.5 border border-border rounded-md divide-y divide-border max-h-48 overflow-auto",
+					children: (data.comments ?? []).map((c, i) => /* @__PURE__ */ jsxs("div", {
+						className: "px-2.5 py-2",
+						children: [/* @__PURE__ */ jsx("div", {
+							className: "text-muted text-[11px] font-mono",
+							children: c.line == null ? c.path : `${c.path}:${c.line}`
+						}), /* @__PURE__ */ jsx("div", {
+							className: "text-xs text-text whitespace-pre-wrap break-words font-mono mt-1",
+							children: c.body
+						})]
+					}, `${c.path}:${c.line ?? ""}:${i}`))
+				}),
+				blocked ? /* @__PURE__ */ jsx("div", {
+					className: "text-warn text-[11px] mt-2.5 leading-relaxed",
+					children: !draftDelivered ? i18nT("apps.codeReviewSage.components.draftReviewActions.publishing_is_blocked_this_review_is_still_runni") : supersededDraft ? i18nT("apps.codeReviewSage.components.draftReviewActions.publishing_is_blocked_a_later_review_replaced_th") : data.contentRedacted ? i18nT("apps.codeReviewSage.components.draftReviewActions.publishing_is_blocked_this_draft_contains_conten") : i18nT("apps.codeReviewSage.components.draftReviewActions.publishing_is_blocked_this_draft_was_written_aga")
+				}) : /* @__PURE__ */ jsxs("div", {
+					className: "flex items-center gap-2 mt-2.5 flex-wrap",
+					children: [confirming ? /* @__PURE__ */ jsxs(Fragment, { children: [
+						/* @__PURE__ */ jsx("span", {
+							className: "text-xs text-text",
+							children: i18nT(PUBLISH_CONFIRM_KEY[confirming])
+						}),
+						/* @__PURE__ */ jsx("button", {
+							type: "button",
+							ref: focusOnMount,
+							onKeyDown: (e) => {
+								if (e.key === "Escape") setConfirming(null);
+							},
+							onClick: () => {
+								const ev = confirming;
+								setConfirming(null);
+								publishMut.mutate(ev);
+							},
+							disabled: publishMut.isPending,
+							className: "text-xs px-2.5 py-1.5 rounded-md border border-danger text-danger hover:text-danger-text hover:bg-danger-subtle disabled:opacity-30 cursor-pointer bg-transparent",
+							children: i18nT(PUBLISH_LABEL_KEY[confirming])
+						}),
+						/* @__PURE__ */ jsx("button", {
+							type: "button",
+							onKeyDown: (e) => {
+								if (e.key === "Escape") setConfirming(null);
+							},
+							onClick: () => setConfirming(null),
+							className: "text-xs px-2.5 py-1.5 rounded-md border border-border text-muted hover:text-text cursor-pointer bg-transparent",
+							children: i18nT("apps.codeReviewSage.components.draftReviewActions.cancel")
+						})
+					] }) : PUBLISH_EVENTS.map((ev) => ev === "APPROVE" && approveWithheld ? null : /* @__PURE__ */ jsx("button", {
+						onClick: () => setConfirming(ev),
+						disabled: publishMut.isPending,
+						className: "text-xs px-2.5 py-1.5 rounded-md border border-border text-muted hover:text-text hover:border-border-strong disabled:opacity-30 cursor-pointer bg-transparent",
+						children: i18nT(PUBLISH_LABEL_KEY[ev])
+					}, ev)), publishMut.isPending && /* @__PURE__ */ jsx("span", {
+						className: "text-muted text-[11px]",
+						children: i18nT("apps.codeReviewSage.components.draftReviewActions.publishing")
+					})]
+				}),
+				!blocked && /* @__PURE__ */ jsxs("div", {
+					className: "text-[11px] mt-2",
+					children: [
+						data.autoMergeArmed && /* @__PURE__ */ jsx("div", {
+							className: "text-warn mb-1 leading-relaxed",
+							children: i18nT("apps.codeReviewSage.components.draftReviewActions.approve_is_unavailable_while_auto_merge_is_armed")
+						}),
+						!data.autoMergeArmed && !data.staleDismissalEnabled && /* @__PURE__ */ jsx("div", {
+							className: "text-warn mb-1 leading-relaxed",
+							children: i18nT("apps.codeReviewSage.components.draftReviewActions.approve_is_unavailable_because_this_base_branch_")
+						}),
+						/* @__PURE__ */ jsx("div", {
+							className: "text-text text-xs",
+							children: i18nT("apps.codeReviewSage.components.draftReviewActions.publishing_is_irreversible_and_visible_to_everyo")
+						})
+					]
+				})
+			] }),
+			err && /* @__PURE__ */ jsx("div", {
+				className: "mt-2",
+				children: /* @__PURE__ */ jsx(ErrorNotice, {
+					title: i18nT("apps.codeReviewSage.components.draftReviewActions.publish_failed"),
+					message: err,
+					askAgent: true,
+					askAgentLabel: i18nT("apps.codeReviewSage.components.draftReviewActions.ask_agent_about_this_failure")
+				})
 			})
 		]
 	});
@@ -5309,8 +5651,29 @@ function Meta({ label, value }) {
 		})]
 	});
 }
+function TabButton({ label, icon: Icon, active, badge, badgeTone = "muted", onClick }) {
+	return /* @__PURE__ */ jsxs("button", {
+		type: "button",
+		role: "tab",
+		"aria-selected": active,
+		onClick,
+		className: `inline-flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] font-medium rounded-md cursor-pointer transition-colors ${active ? "bg-bg-elevated text-text border border-border" : "bg-transparent text-muted border border-transparent hover:text-text"}`,
+		children: [
+			/* @__PURE__ */ jsx(Icon, {
+				size: 13,
+				"aria-hidden": "true"
+			}),
+			label,
+			badge !== void 0 && badge !== null && /* @__PURE__ */ jsx("span", {
+				className: `text-[10.5px] px-1.5 py-0.5 rounded-full ${badgeTone === "alert" ? "bg-bg-elevated text-danger" : badgeTone === "accent" ? "bg-accent-subtle text-accent" : "bg-bg-elevated text-muted"}`,
+				children: badge
+			})
+		]
+	});
+}
 function PrReviewDetail({ pr }) {
 	const { prRun, report, reportLoading, reportError, startReview, cancelRun, cancelling, pool, archiveRun, archiving, archiveError, runs, postComments, postCommentGroups, dismissFinding, posting, postError, postingSelection } = useSage();
+	const [tab, setTab] = useState("review");
 	const source = usePrSource(pr.url);
 	const running = prRun?.status === "running";
 	const changeEntry = prRun?.progress?.[pr.change_id];
@@ -5340,12 +5703,14 @@ function PrReviewDetail({ pr }) {
 		};
 	}, [report, pr.url]);
 	const src = source.data;
-	const title = pr.title || src?.title || scoped?.rows[0]?.title || `#${pr.number}`;
+	const title = pr.title || src?.title || `#${pr.number}`;
 	const author = pr.author || src?.author || "";
 	const updatedAt = pr.updated_at || src?.updatedAt || "";
 	const headSha = pr.head_sha || src?.headSha || "";
 	const failed = !!prRun && effectiveRunStatus(prRun) === "error";
 	const isDraft = pr.draft ?? src?.draft ?? false;
+	const failing = (src?.checks ?? []).filter((c) => c.bucket === "failed").length;
+	const findings = (scoped?.bands.red ?? 0) + (scoped?.bands.yellow ?? 0);
 	const reviewBody = /* @__PURE__ */ jsxs(Fragment, { children: [
 		prRun && /* @__PURE__ */ jsx(FailureNotice, {
 			run: prRun,
@@ -5412,79 +5777,134 @@ function PrReviewDetail({ pr }) {
 			expectedReviewId: prRun.posted_review_ids?.[pr.change_id] ?? ""
 		})
 	] });
+	/** The provider-backed view of the pull request itself.
+	*
+	*  This is the SHARED `PullRequestPanel` -- the same component the chat window
+	*  renders -- rather than a Sage-local reimplementation. Sage's job is the
+	*  review layer (findings, bands, ship summary, publish); what GitHub says
+	*  about a pull request is one surface and belongs in one component. Reusing
+	*  it also brings the two sections a Sage-local pane never had: the
+	*  syntax-highlighted file diff and the commit list.
+	*
+	*  `onAddToChat` is deliberately omitted: there is no composer here, and the
+	*  panel hides its chat-handoff affordances when the callback is absent. */
+	const sourceBody = (Panel) => {
+		if (source.isLoading) return /* @__PURE__ */ jsx("div", {
+			className: "text-[12.5px] text-muted",
+			children: i18nT("apps.codeReviewSage.components.prReviewDetail.loading_pull_request_details")
+		});
+		if (source.error) return /* @__PURE__ */ jsx(SourceError, { error: source.error });
+		if (!src) return null;
+		const link = sageSourceLink(pr.url);
+		if (!link) return /* @__PURE__ */ jsx(SourceError, { error: new Error(pr.url) });
+		return /* @__PURE__ */ jsx("div", {
+			className: "flex-1 min-h-0 -mx-6 -my-5",
+			children: /* @__PURE__ */ jsx(Panel, {
+				sources: [link],
+				selectedUrl: pr.url,
+				onSelect: () => {}
+			})
+		});
+	};
 	return /* @__PURE__ */ jsxs("article", {
 		className: "h-full flex flex-col min-h-0",
 		children: [/* @__PURE__ */ jsxs("header", {
 			className: "px-4 md:px-6 pt-5 pb-3 border-b border-border flex-shrink-0",
-			children: [/* @__PURE__ */ jsxs("div", {
-				className: "flex items-start gap-3",
-				children: [/* @__PURE__ */ jsxs("div", {
-					className: "flex-1 min-w-0",
-					children: [/* @__PURE__ */ jsx("h1", {
-						className: "text-[21px] font-bold leading-tight text-text-strong break-words",
-						children: title
-					}), /* @__PURE__ */ jsxs("div", {
-						className: "flex items-center gap-2.5 mt-2 flex-wrap text-[12.5px] text-muted",
-						children: [
-							/* @__PURE__ */ jsxs("a", {
-								href: safeHref(pr.url),
-								target: "_blank",
-								rel: "noreferrer",
-								title: i18nT("apps.codeReviewSage.components.prReviewDetail.open_on_github"),
-								className: "inline-flex items-center gap-1 font-mono text-muted hover:text-accent hover:underline",
-								children: [
-									"#",
-									pr.number,
-									" ",
-									/* @__PURE__ */ jsx(ExternalLink, {
-										size: 11,
-										"aria-hidden": "true"
-									})
-								]
-							}),
-							author && /* @__PURE__ */ jsx(Meta, {
-								label: i18nT("apps.codeReviewSage.components.prReviewDetail.author"),
-								value: author
-							}),
-							updatedAt && /* @__PURE__ */ jsx(Meta, {
-								label: i18nT("apps.codeReviewSage.components.prReviewDetail.updated"),
-								value: relativeAge(updatedAt)
-							}),
-							headSha && /* @__PURE__ */ jsx(Meta, {
-								label: i18nT("apps.codeReviewSage.components.prReviewDetail.head"),
-								value: headSha.slice(0, 7)
-							}),
-							isDraft && /* @__PURE__ */ jsx("span", {
-								className: "text-[10.5px] px-1.5 py-0.5 rounded-full bg-bg-elevated border border-border",
-								children: i18nT("apps.codeReviewSage.components.prReviewDetail.draft")
-							}),
-							/* @__PURE__ */ jsx(PrStatusChips, { src }),
-							prRun && prRun.status !== "running" && /* @__PURE__ */ jsx(RunStatusPill, {
-								status: effectiveRunStatus(prRun),
-								cancelRequested: Boolean(prRun.cancel_requested_at)
-							})
-						]
+			children: [
+				/* @__PURE__ */ jsxs("div", {
+					className: "flex items-start gap-3",
+					children: [/* @__PURE__ */ jsxs("div", {
+						className: "flex-1 min-w-0",
+						children: [/* @__PURE__ */ jsx("h1", {
+							className: "text-[21px] font-bold leading-tight text-text-strong break-words",
+							children: title
+						}), /* @__PURE__ */ jsxs("div", {
+							className: "flex items-center gap-2.5 mt-2 flex-wrap text-[12.5px] text-muted",
+							children: [
+								/* @__PURE__ */ jsxs("a", {
+									href: safeHref(pr.url),
+									target: "_blank",
+									rel: "noreferrer",
+									title: i18nT("apps.codeReviewSage.components.prReviewDetail.open_on_github"),
+									className: "inline-flex items-center gap-1 font-mono text-muted hover:text-accent hover:underline",
+									children: [
+										"#",
+										pr.number,
+										" ",
+										/* @__PURE__ */ jsx(ExternalLink, {
+											size: 11,
+											"aria-hidden": "true"
+										})
+									]
+								}),
+								author && /* @__PURE__ */ jsx(Meta, {
+									label: i18nT("apps.codeReviewSage.components.prReviewDetail.author"),
+									value: author
+								}),
+								updatedAt && /* @__PURE__ */ jsx(Meta, {
+									label: i18nT("apps.codeReviewSage.components.prReviewDetail.updated"),
+									value: relativeAge(updatedAt)
+								}),
+								headSha && /* @__PURE__ */ jsx(Meta, {
+									label: i18nT("apps.codeReviewSage.components.prReviewDetail.head"),
+									value: headSha.slice(0, 7)
+								}),
+								isDraft && /* @__PURE__ */ jsx("span", {
+									className: "text-[10.5px] px-1.5 py-0.5 rounded-full bg-bg-elevated border border-border",
+									children: i18nT("apps.codeReviewSage.components.prReviewDetail.draft")
+								}),
+								/* @__PURE__ */ jsx(PrStatusChips, { src }),
+								prRun && prRun.status !== "running" && /* @__PURE__ */ jsx(RunStatusPill, {
+									status: effectiveRunStatus(prRun),
+									cancelRequested: Boolean(prRun.cancel_requested_at)
+								})
+							]
+						})]
+					}), /* @__PURE__ */ jsxs("button", {
+						type: "button",
+						onClick: () => startReview.mutate([pr.url]),
+						disabled: busy || running,
+						title: running ? i18nT("apps.codeReviewSage.components.prReviewDetail.review_already_running") : pr.reviewed ? i18nT("apps.codeReviewSage.components.prReviewDetail.review_again_at_current_head") : i18nT("apps.codeReviewSage.components.prReviewDetail.review_this_pull_request"),
+						className: "flex-shrink-0 inline-flex items-center gap-1.5 rounded-md bg-accent text-accent-fg px-3 py-1.5 text-[12.5px] font-medium border-none cursor-pointer hover:bg-accent-hover disabled:opacity-40 disabled:cursor-default transition-colors",
+						children: [busy ? /* @__PURE__ */ jsx(Loader2, {
+							size: 13,
+							className: "animate-spin motion-reduce:animate-none"
+						}) : /* @__PURE__ */ jsx(ScanSearch, { size: 13 }), running ? i18nT("apps.codeReviewSage.components.prReviewDetail.reviewing") : failed ? i18nT("apps.codeReviewSage.components.prReviewDetail.retry_review") : pr.reviewed || pr.reviewed_stale ? i18nT("apps.codeReviewSage.components.prReviewDetail.review_again") : i18nT("apps.codeReviewSage.components.prReviewDetail.review")]
 					})]
-				}), /* @__PURE__ */ jsxs("button", {
-					type: "button",
-					onClick: () => startReview.mutate([pr.url]),
-					disabled: busy || running,
-					title: running ? i18nT("apps.codeReviewSage.components.prReviewDetail.review_already_running") : pr.reviewed ? i18nT("apps.codeReviewSage.components.prReviewDetail.review_again_at_current_head") : i18nT("apps.codeReviewSage.components.prReviewDetail.review_this_pull_request"),
-					className: "flex-shrink-0 inline-flex items-center gap-1.5 rounded-md bg-accent text-accent-fg px-3 py-1.5 text-[12.5px] font-medium border-none cursor-pointer hover:bg-accent-hover disabled:opacity-40 disabled:cursor-default transition-colors",
-					children: [busy ? /* @__PURE__ */ jsx(Loader2, {
-						size: 13,
-						className: "animate-spin motion-reduce:animate-none"
-					}) : /* @__PURE__ */ jsx(ScanSearch, { size: 13 }), running ? i18nT("apps.codeReviewSage.components.prReviewDetail.reviewing") : failed ? i18nT("apps.codeReviewSage.components.prReviewDetail.retry_review") : pr.reviewed || pr.reviewed_stale ? i18nT("apps.codeReviewSage.components.prReviewDetail.review_again") : i18nT("apps.codeReviewSage.components.prReviewDetail.review")]
-				})]
-			}), startReview.error && /* @__PURE__ */ jsx(ErrorNotice, {
-				message: startReview.error.message,
-				variant: "inline",
-				askAgent: true,
-				className: "mt-2"
-			})]
-		}), /* @__PURE__ */ jsx("div", {
+				}),
+				startReview.error && /* @__PURE__ */ jsx(ErrorNotice, {
+					message: startReview.error.message,
+					variant: "inline",
+					askAgent: true,
+					className: "mt-2"
+				}),
+				PullRequestPanel && /* @__PURE__ */ jsxs("div", {
+					role: "tablist",
+					"aria-label": i18nT("apps.codeReviewSage.components.prReviewDetail.pull_request_detail"),
+					className: "flex items-center gap-1 mt-3 flex-wrap",
+					children: [/* @__PURE__ */ jsx(TabButton, {
+						label: i18nT("apps.codeReviewSage.components.prReviewDetail.sage_review"),
+						icon: ScanSearch,
+						active: tab === "review",
+						badge: running ? /* @__PURE__ */ jsx("span", {
+							"aria-label": i18nT("apps.codeReviewSage.components.prReviewDetail.running"),
+							className: "inline-block w-1.5 h-1.5 rounded-full bg-accent animate-pulse motion-reduce:animate-none"
+						}) : findings || void 0,
+						badgeTone: running ? "accent" : findings ? "alert" : "muted",
+						onClick: () => setTab("review")
+					}), /* @__PURE__ */ jsx(TabButton, {
+						label: i18nT("apps.codeReviewSage.components.prReviewDetail.pull_request"),
+						icon: FileText,
+						active: tab === "source",
+						badge: src ? failing || void 0 : void 0,
+						badgeTone: failing ? "alert" : "muted",
+						onClick: () => setTab("source")
+					})]
+				})
+			]
+		}), /* @__PURE__ */ jsxs("div", {
 			className: "flex-1 min-h-0 overflow-y-auto scrollbar-none px-4 md:px-6 py-5 flex flex-col gap-5",
-			children: reviewBody
+			children: [(tab === "review" || !PullRequestPanel) && reviewBody, tab === "source" && PullRequestPanel && sourceBody(PullRequestPanel)]
 		})]
 	});
 }

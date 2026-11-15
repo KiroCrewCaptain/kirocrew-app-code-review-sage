@@ -3,10 +3,9 @@
  * pull request (`types/index.sources.ts`, the fields the page reads) and the link
  * shape the dashboard's pull-request panel takes (`utils/pullRequestLinks.ts`).
  *
- * Neither is fetched or rendered by the dashboard for this app: the payload comes
- * from the dashboard's `/api/source/pull-request`, which is outside this app's API
- * grant (PORTING.md, "Remaining gaps"), so `usePrSource` never has one and every
- * reader treats it as absent.
+ * The payload comes from the dashboard's `/api/source/pull-request`, which this
+ * app's manifest declares, through the host's scoped client (`sourceApi` in
+ * `api.ts`); the link is what the App SDK's `PullRequestPanel` takes.
  */
 
 export type PullRequestProvider = 'github' | 'gitlab' | 'bitbucket-server' | (string & {})

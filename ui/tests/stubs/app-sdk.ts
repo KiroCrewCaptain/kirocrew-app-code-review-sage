@@ -1,5 +1,5 @@
 /**
- * A light stand-in for the host's `@kirocrew/app-sdk`, at App Kit level 1.
+ * A light stand-in for the host's `@kirocrew/app-sdk`, at App Kit level 2.
  *
  * Only the names the bundle uses, with the host's documented behaviour where a
  * test depends on it. The `stub*` / `resetStubSdk` exports are test controls; no
@@ -12,7 +12,8 @@
  */
 
 import { vi } from 'vitest'
-import type { KeyboardEvent } from 'react'
+import { createElement, type KeyboardEvent } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { AppApi, ChatLaunchOptions, DateOptions, NumberOptions } from '@kirocrew/app-sdk'
 
 let locale = 'en'
@@ -54,7 +55,33 @@ export function compareText(a: string, b: string): number {
   return new Intl.Collator(locale, { numeric: true, sensitivity: 'base' }).compare(a, b)
 }
 
-export const APP_SDK_LEVEL = 1
+export const APP_SDK_LEVEL = 2
+
+interface PanelProps {
+  sources: { url: string; provider: string; number: number; repo: string; kind: string }[]
+  selectedUrl: string
+  onSelect: (url: string) => void
+}
+
+/** Every render of the panel stand-in, with its props. */
+export const stubPullRequestPanel = vi.fn<(props: PanelProps) => void>()
+
+/** The host's `PullRequestPanel` (level 2), stood in. The real one reads the
+ *  payload under `['pull-request-source', url]` in the app's own query client
+ *  and renders description, checks, threads, diff and commits; this one renders
+ *  the description it finds under that key, so a test can tell the page and the
+ *  panel share one entry. It sends nothing itself. */
+export function PullRequestPanel(props: PanelProps) {
+  stubPullRequestPanel(props)
+  const cached = useQueryClient().getQueryData<{ description?: string }>(
+    ['pull-request-source', props.selectedUrl],
+  )
+  return createElement(
+    'section',
+    { 'aria-label': 'Pull request panel', 'data-selected-url': props.selectedUrl },
+    cached?.description ?? '',
+  )
+}
 
 class ScopedError extends Error {
   status: number

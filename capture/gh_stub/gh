@@ -6,7 +6,10 @@ it in front of the real `gh`: `KIROCREW_SAGE_GH` points the app's own calls at
 it, and its directory leads `PATH` so the review worker's shell finds it first.
 It answers the calls the app and the review worker make: `gh api` on the
 repository, pull request, file, comment and event paths, `gh search prs`,
-`gh pr diff`, `gh pr view` and `gh auth status`. It reads nothing but data.json,
+`gh pr diff`, `gh pr view` and `gh auth status`. It also answers what the
+dashboard's own pull-request read asks for the page's "Pull request" tab: the
+`gh pr view --json` fields, and the two GraphQL reads (review threads and the
+head commit's check rollup). It reads nothing but data.json,
 writes nothing, opens no socket, and holds no credential; a call it does not know
 fails with exit 1, as a real `gh` would on a missing path.
 """
@@ -81,7 +84,84 @@ def jq(value, expr: str):
     return value, False
 
 
+# The checks each demo pull request shows, by number: (name, status, conclusion).
+CHECKS = {
+    42: [("lint", "COMPLETED", "SUCCESS"), ("tests", "COMPLETED", "SUCCESS")],
+    43: [("lint", "COMPLETED", "SUCCESS"), ("tests", "COMPLETED", "FAILURE"),
+         ("type check", "COMPLETED", "SUCCESS")],
+    44: [("lint", "COMPLETED", "SUCCESS")],
+}
+
+
+def flag(args: list[str], name: str) -> str:
+    """The value of `-f name=value` / `-F name=value` in a `gh api` call."""
+    prefix = name + "="
+    for i, arg in enumerate(args[:-1]):
+        if arg in ("-f", "-F", "--raw-field", "--field") and args[i + 1].startswith(prefix):
+            return args[i + 1][len(prefix):]
+    return ""
+
+
+def graphql(args: list[str]) -> None:
+    """The two reads the dashboard's pull-request panel makes, from data.json."""
+    query = flag(args, "query")
+    owner = flag(args, "owner") or flag(args, "o")
+    repo = flag(args, "repo") or flag(args, "r")
+    number = flag(args, "number") or flag(args, "n")
+    pr = find_pr(f"{owner}/{repo}", int(number)) if number.isdigit() else None
+    if pr is None:
+        fail("gh: Could not resolve to a PullRequest (HTTP 200)")
+    if "reviewThreads" in query:
+        emit({"data": {"repository": {"pullRequest": {"reviewThreads": {"nodes": []}}}}})
+        return
+    if "statusCheckRollup" in query:
+        head = pr["head"]["sha"]
+        nodes = [{
+            "__typename": "CheckRun", "name": name, "status": status, "conclusion": conclusion,
+            "startedAt": pr["updated_at"], "completedAt": pr["updated_at"],
+            "detailsUrl": f"{pr['html_url']}/checks",
+            "checkSuite": {"conclusion": conclusion, "workflowRun": {
+                "databaseId": 1000 + i, "event": "pull_request",
+                "workflow": {"databaseId": 7, "name": "CI"}}},
+        } for i, (name, status, conclusion) in enumerate(CHECKS.get(pr["number"], []))]
+        emit({"data": {"repository": {"pullRequest": {"headRefOid": head, "commits": {"nodes": [{
+            "commit": {"oid": head, "statusCheckRollup": {"contexts": {
+                "totalCount": len(nodes), "pageInfo": {"hasNextPage": False, "endCursor": None},
+                "nodes": nodes}}}}]}}}}})
+        return
+    fail("gh (capture stand-in): unsupported GraphQL query")
+
+
+def pr_view(pr: dict) -> dict:
+    """`gh pr view --json`: the fields the app's worker reads, plus every field the
+    dashboard's pull-request read names (a real gh returns only those asked for;
+    extra keys are ignored by every reader)."""
+    return {
+        "number": pr["number"], "title": pr["title"], "body": pr["body"],
+        "url": pr["html_url"], "author": {"login": pr["user"]["login"]},
+        "headRefOid": pr["head"]["sha"], "headRefName": pr["head"]["ref"],
+        "baseRefName": pr["base"]["ref"],
+        "files": [{"path": f["filename"], "additions": f["additions"],
+                   "deletions": f["deletions"]} for f in pr["_files"]],
+        "state": "OPEN", "isDraft": pr["draft"],
+        "additions": pr["additions"], "deletions": pr["deletions"],
+        "changedFiles": pr["changed_files"],
+        "mergeable": "MERGEABLE" if pr.get("mergeable") else "UNKNOWN",
+        "mergeStateStatus": str(pr.get("mergeable_state") or "unknown").upper(),
+        "mergedAt": None, "updatedAt": pr["updated_at"],
+        "comments": [], "reviews": [],
+        "commits": [{
+            "oid": pr["head"]["sha"], "messageHeadline": pr["title"], "messageBody": "",
+            "authoredDate": pr["updated_at"], "committedDate": pr["updated_at"],
+            "authors": [{"login": pr["user"]["login"], "name": pr["user"]["login"]}],
+        }],
+    }
+
+
 def api(args: list[str]) -> None:
+    if args[:1] == ["graphql"]:
+        graphql(args[1:])
+        return
     path = next((a for a in args if not a.startswith("-")), "")
     expr = ""
     if "--jq" in args:
@@ -167,14 +247,7 @@ def main(argv: list[str]) -> None:
         pr = pr_ref(rest[1:])
         if pr is None:
             fail("gh: no pull request found")
-        emit({
-            "number": pr["number"], "title": pr["title"], "body": pr["body"],
-            "url": pr["html_url"], "author": {"login": pr["user"]["login"]},
-            "headRefOid": pr["head"]["sha"], "baseRefName": pr["base"]["ref"],
-            "files": [{"path": f["filename"], "additions": f["additions"],
-                       "deletions": f["deletions"]} for f in pr["_files"]],
-            "state": "OPEN", "isDraft": pr["draft"],
-        })
+        emit(pr_view(pr))
     else:
         fail(f"gh (capture stand-in): unsupported command: {' '.join(argv[:3])}")
 
