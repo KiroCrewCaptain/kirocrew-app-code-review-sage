@@ -13,4 +13,4 @@
 aiohttp==3.14.3
 pytest==9.0.3
 pytest-asyncio==0.21.2
-kirocrew @ https://github.com/kirodotdev/KiroCrew/archive/55439d87700799a8789a341da65e2e1c355e26fc.tar.gz
+kirocrew @ https://github.com/kirodotdev/KiroCrew/archive/af94fac51f6275a3935dcedfb9554911053cc342.tar.gz

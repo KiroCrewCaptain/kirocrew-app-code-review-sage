@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 // `/all` for every catalog: `../i18n` registers English only.
 import { i18next } from './stubs/i18n-all'
 import type { RunReport } from '../src/lib/types'
+import { stubNavigate } from './stubs/app-sdk'
 
 // Render markdown-bearing prose as a tagged span so the test can (a) read the
 // text and (b) prove a given string was routed THROUGH the markdown renderer —
@@ -173,11 +174,36 @@ describe('ReportView', () => {
     expect(onArchive).toHaveBeenCalledTimes(1)
   })
 
-  it('links to the shared artifact copy when a slug exists (no Share button)', () => {
+  it('links to the shared artifact copy when a slug exists (no Share button), through the host navigator', () => {
+    stubNavigate.mockReset()
     render(<ReportView report={makeReport({ report_slug: 'focus-report-x' })} onArchive={vi.fn()} />)
     const link = screen.getByRole('link', { name: /Open shared copy/ })
     expect(link.getAttribute('href')).toBe('/artifacts/focus-report-x')
     expect(screen.queryByRole('button', { name: /Share/ })).not.toBeInTheDocument()
+    // A navigation the host performs, not a page load: in an app pop-out window
+    // the host's navigator is what hands this page to the main window.
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })
+    fireEvent(link, click)
+    expect(click.defaultPrevented).toBe(true)
+    expect(stubNavigate).toHaveBeenCalledWith('/artifacts/focus-report-x')
+  })
+
+  it('leaves a modified click on the shared copy to the browser', () => {
+    stubNavigate.mockReset()
+    render(<ReportView report={makeReport({ report_slug: 'focus-report-x' })} onArchive={vi.fn()} />)
+    const link = screen.getByRole('link', { name: /Open shared copy/ })
+    // Read what the page decided once the event has passed it, then stop jsdom's
+    // own navigation, which it does not implement.
+    let preventedByPage: boolean | null = null
+    const record = (e: Event) => { preventedByPage = e.defaultPrevented; e.preventDefault() }
+    window.addEventListener('click', record)
+    try {
+      fireEvent(link, new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true }))
+    } finally {
+      window.removeEventListener('click', record)
+    }
+    expect(preventedByPage).toBe(false)
+    expect(stubNavigate).not.toHaveBeenCalled()
   })
 })
 

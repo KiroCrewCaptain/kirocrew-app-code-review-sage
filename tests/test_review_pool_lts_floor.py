@@ -1,20 +1,25 @@
-"""Code Review Sage never falls back to Kiro CLI in an enterprise build (RFC D6).
+"""Code Review Sage never falls back to Kiro CLI in an LTS build (RFC D6).
 
 In ``oss`` a review runs on Kiro CLI when the configured backend is served neither by
-the shared review runtime nor by a per-task client. In an enterprise build that
+the shared review runtime nor by a per-task client. In an LTS build that
 automatic fallback is gone: Kiro CLI runs a review only when it is picked
 (``agent.acp_backend`` ``"kiro"``) and the remote ``agent_backend`` policy allows
-it. With no backend configured an enterprise build runs on its governed default,
+it. With no backend configured an LTS build runs on its governed default,
 KAS, and a KAS that the gateway's boot proved cannot start is refused before any
 process.
+
+Kiro Crew renamed the Enterprise Edition to the LTS Edition
+(kirodotdev/KiroCrew#32970). ``TestHostBeforeTheRename`` keeps the floor on a host
+that still says ``is_enterprise`` and ``enterprise_boot``.
 """
 
+import types
 import unittest
 import unittest.mock
 
 from code_review_sage.sage_lib import review_pool as rp
 
-from kiro_crew import enterprise_boot
+from kiro_crew import lts_boot
 from kiro_crew.agent_sdk import backends as acp_backends
 
 KIRO = acp_backends.ACP_BACKEND_KIRO
@@ -26,12 +31,12 @@ class _Base(unittest.TestCase):
     def setUp(self):
         rp._WARNED_FALLBACK_BACKENDS.clear()
         self.addCleanup(rp._WARNED_FALLBACK_BACKENDS.clear)
-        patcher = unittest.mock.patch.object(enterprise_boot, "_kas_refusal", None)
+        patcher = unittest.mock.patch.object(lts_boot, "_kas_refusal", None)
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def _enterprise(self):
-        patcher = unittest.mock.patch("kiro_crew.edition.EDITION", "enterprise")
+    def _lts(self):
+        patcher = unittest.mock.patch("kiro_crew.edition.EDITION", "lts")
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -61,9 +66,9 @@ class _Base(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
 
-class TestEnterprise(_Base):
+class TestLts(_Base):
     def test_an_unserved_backend_is_refused_even_when_kiro_is_allowed(self):
-        self._enterprise()
+        self._lts()
         self._selectable(KIRO, KAS, CLAUDE)
         self._configure("claude")
         self._no_client()
@@ -77,43 +82,43 @@ class TestEnterprise(_Base):
         self.assertIn("Nothing runs on another harness", message)
 
     def test_a_client_backend_the_policy_allows_runs_on_it(self):
-        self._enterprise()
+        self._lts()
         self._selectable(KAS, CLAUDE)
         self._configure("claude")
         self.assertEqual(rp.review_backend(), CLAUDE)
 
     def test_an_explicit_kiro_pick_the_policy_allows_runs(self):
-        self._enterprise()
+        self._lts()
         self._selectable(KIRO, KAS)
         self._configure("kiro")
         self.assertEqual(rp.review_backend(), KIRO)
 
     def test_an_explicit_kiro_pick_the_policy_denies_runs_on_kas(self):
         # The denied pick resolves to the KAS floor through the one gate.
-        self._enterprise()
+        self._lts()
         self._selectable(KAS)
         self._configure("kiro")
         self.assertEqual(rp.review_backend(), KAS)
 
     def test_no_backend_runs_on_the_governed_default(self):
-        self._enterprise()
+        self._lts()
         self._selectable(KIRO, KAS)
         self._configure(None)
         self.assertEqual(rp.review_backend(), KAS)
 
     def test_a_kas_boot_proved_unstartable_is_refused(self):
-        self._enterprise()
+        self._lts()
         self._selectable(KAS)
         self._configure(None)
         with unittest.mock.patch.object(
-            enterprise_boot, "_kas_refusal", ("KAS cannot start: x", "do y")
+            lts_boot, "_kas_refusal", ("KAS cannot start: x", "do y")
         ):
             with self.assertRaises(rp.ReviewHarnessDenied) as exc:
                 rp.review_backend()
         self.assertIn("KAS cannot start: x", str(exc.exception))
 
     def test_preflight_names_the_refusal_and_spawns_nothing(self):
-        self._enterprise()
+        self._lts()
         self._selectable(KAS, CLAUDE)
         self._configure("claude")
         self._no_client()
@@ -141,9 +146,59 @@ class TestOssUnchanged(_Base):
         self._selectable(KAS)
         self._configure("kas")
         with unittest.mock.patch.object(
-            enterprise_boot, "_kas_refusal", ("KAS cannot start: x", "do y")
+            lts_boot, "_kas_refusal", ("KAS cannot start: x", "do y")
         ):
             self.assertEqual(rp.review_backend(), KAS)
+
+
+class TestHostBeforeTheRename(_Base):
+    """A host from before kirodotdev/KiroCrew#32970: ``is_enterprise`` and
+    ``enterprise_boot``, no ``is_lts`` and no ``lts_boot``."""
+
+    def _old_host(self, *, enterprise, refusal=None):
+        edition = types.SimpleNamespace(is_enterprise=lambda: enterprise)
+        boot = types.SimpleNamespace(kas_refusal=lambda: refusal)
+        modules = {"kiro_crew.edition": edition, "kiro_crew.enterprise_boot": boot}
+
+        def module(name):
+            return modules.get(name)
+
+        def attr(module_name, name):
+            return getattr(modules.get(module_name), name, None)
+
+        for name, fn in (("module", module), ("attr", attr)):
+            patcher = unittest.mock.patch.object(rp._host, name, fn)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_an_unserved_backend_is_refused(self):
+        self._old_host(enterprise=True)
+        self._selectable(KIRO, KAS, CLAUDE)
+        self._configure("claude")
+        self._no_client()
+        with self.assertRaises(rp.ReviewHarnessDenied):
+            rp.review_backend()
+
+    def test_no_backend_runs_on_the_governed_default(self):
+        self._old_host(enterprise=True)
+        self._selectable(KIRO, KAS)
+        self._configure(None)
+        self.assertEqual(rp.review_backend(), KAS)
+
+    def test_a_kas_boot_proved_unstartable_is_refused(self):
+        self._old_host(enterprise=True, refusal=("KAS cannot start: x", "do y"))
+        self._selectable(KAS)
+        self._configure(None)
+        with self.assertRaises(rp.ReviewHarnessDenied) as exc:
+            rp.review_backend()
+        self.assertIn("KAS cannot start: x", str(exc.exception))
+
+    def test_an_oss_build_still_falls_back_to_kiro(self):
+        self._old_host(enterprise=False)
+        self._selectable(KAS, CLAUDE)
+        self._configure("claude")
+        self._no_client()
+        self.assertEqual(rp.review_backend(), KIRO)
 
 
 if __name__ == "__main__":
