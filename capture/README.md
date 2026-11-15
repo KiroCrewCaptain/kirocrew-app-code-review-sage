@@ -240,7 +240,7 @@ request, so every run puts a stand-in in front of the real `gh`:
 ```bash
 mkdir -m 700 -p /tmp/empty-gh-config
 env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR=/tmp/empty-gh-config \
-  KIROCREW_SAGE_GH="$PWD/capture/gh_stub/gh" \
+  KIROCREW_SAGE_GH="$PWD/capture/gh_stub/gh" KIROCREW_GH_BIN="$PWD/capture/gh_stub/gh" \
   PATH="$PWD/capture/gh_stub:$PATH" \
   python capture/capture.py --kirocrew /tmp/kc-capture
 ```
@@ -250,13 +250,18 @@ env -u GH_TOKEN -u GITHUB_TOKEN GH_CONFIG_DIR=/tmp/empty-gh-config \
   from the stand-in.
 - The stand-in's directory leads `PATH`, so the review worker's shell finds it
   before any installed `gh`.
+- `KIROCREW_GH_BIN` points the dashboard's own pull-request read (the page's
+  **Pull request** tab and header chips) at the same stand-in: the dashboard
+  looks in the usual install folders before `PATH`, so without it a `gh`
+  installed there would be asked instead.
 - `GH_CONFIG_DIR` points at an empty folder and the token variables are
   dropped, so even a real `gh` reached by some other path has no sign-in.
 
 The stand-in (`gh_stub/gh`) answers only from `gh_stub/data.json`: the invented
 `fernleaf-garden` organisation, its `seed-swap` and `planting-calendar`
 repositories, four open pull requests with their diffs, and the signed-in user
-`sam-fernleaf`. It reads nothing else, writes nothing and opens no socket.
+`sam-fernleaf`; the checks each pull request shows are the `CHECKS` table in
+`gh_stub/gh`. It reads nothing else, writes nothing and opens no socket.
 The organisation, repositories and people do not exist on GitHub (checked when
 the data was written), so the pull-request links in the pictures lead nowhere.
 Edit the pull requests in `gh_stub/make_data.py` and run it to regenerate the

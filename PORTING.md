@@ -30,7 +30,8 @@ change here.
 
 ## What carried over unchanged
 
-- `app.json` `name` (`code-review-sage`), `version` (`0.9.3`), `author`,
+- `app.json` `name` (`code-review-sage`), `version` (`0.9.4`, the version the wheel
+  built-in carries once Kiro Crew pins this release), `author`,
   `permissions` (`api: ["/api/apps/code-review-sage", "/api/apps/code-review-sage/*",
   "/api/source/pull-request"]`, `network`, `storage`; the last `api` entry is the
   one kirodotdev/KiroCrew#36343 adds to the built-in's own manifest, which the
@@ -90,7 +91,7 @@ change here.
 | `ui.pages` `[{"route": "/code-review-sage", "label": "Code Review Sage", "icon": "ScanSearch"}]`, page compiled into the dashboard (`website/src/apps/builtinRegistry.ts`) | `ui.entry: "dist/index.mjs"` (a committed ESM bundle built from `ui/src/`), `ui.pages` `[{"route": "/apps/code-review-sage", "label": "Code Review Sage"}]`, no `icon` | An installed app ships its page as a bundle AppHost loads. The legacy `/code-review-sage` route and `ScanSearch` glyph of an adopted record come from Kiro Crew's adoption pin, never from this manifest. |
 | App Store copy keys in the dashboard catalogs (`website/src/components/appstore/appManifest.ts:143-156`) | `l10n` block in `app.json` for the 11 non-English locales | The listing copy travels with the app: the `apps.codeReviewSage.manifest` subtree of `ui/i18n/<locale>.json`, kept equal by a test. |
 | No `minKiroCrewVersion`, no `license` | `"minKiroCrewVersion": "0.13.0"`, `"license": "Apache-2.0"` | 0.13.0 is the first release line with App Kit level 1; a 0.12.x route registry skips every record that is not its own `AppRoute`, so every route of this app would answer 404 there. |
-| The rail header showed a fixed `v2.0` (`website/src/apps/code-review-sage/components/RailHeader.tsx:24`) | `v` + `app.json` `version`, imported from the manifest at build time (`ui/tests/SageRailHeaderCov80.test.tsx` reads the same field) | The page named a version the app never had; the listing says 0.9.3, so the header must too. |
+| The rail header showed a fixed `v2.0` (`website/src/apps/code-review-sage/components/RailHeader.tsx:24`) | `v` + `app.json` `version`, imported from the manifest at build time (`ui/tests/SageRailHeaderCov80.test.tsx` reads the same field) | The page named a version the app never had; the listing says the manifest's version, so the header must too. |
 | `GET /runs` reported the pool's static default cap (5) until the first review created the pool (`sage_lib/review_pool.py:966-974`, `backend/routes_parts/review_runs.py:591`) | With no batch running, `max` is the configured **Reviews at once** (`effective_max_concurrent()`, read off the loop) | The progress panel read "0 of 5 reviewers busy" for a review that then ran one at a time (`tests/test_backend_routes.py::test_runs_reports_the_configured_cap_before_the_first_review`). |
 | The Japanese third highlight said findings are posted as a pending draft GitHub review you submit (`website/src/i18n/locales/ja.json:1157`) | Translated from the English highlight: reviews are read in the app and nothing is posted unless you ask (`app.json` `l10n.ja`, `ui/i18n/ja.json`) | Every other locale says what the English says; this one described a different behaviour. |
 

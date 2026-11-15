@@ -147,6 +147,9 @@ repositories stay in the menu at the top of the page.
    itself: its description, checks, review threads, file changes and commits.
    The header above it says whether it is open or merged, whether it has
    conflicts and how many checks fail.
+
+   ![The Pull request tab of #43 Let members cancel a swap request in fernleaf-garden/seed-swap: the header says it is open with 1 failing check, and the dashboard's pull-request panel below lists its one changed file, seedswap/routes/swaps.py with 20 lines added, opened on the diff that imports tell_member and adds the DELETE /swaps/<id> route, beside the Description, Commits, Checks 2/3 and Reviews sections](docs/media/pull-request-tab-light.png)
+
 8. Past reviews are under **Reviews**. **Requests** lists the pull requests
    that ask for your review on GitHub, across repositories; tick them and
    review them the same way.

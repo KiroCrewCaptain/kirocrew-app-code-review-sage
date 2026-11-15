@@ -50,6 +50,18 @@
       "alt": "A finished Code Review Sage review of two fernleaf-garden/seed-swap pull requests: the Focus Report puts both under Needs review, #42 Cache the frost-date lookup per postcode with design risk medium, blast radius MEDIUM, 4 blocking and 3 should-fix findings, and #43 Let members cancel a swap request with design risk medium, blast radius SMALL, 1 blocking and 4 should-fix, above a Draft 14 comments button"
     },
     {
+      "file": "pull-request-tab-light.png",
+      "name": "pull-request-tab",
+      "theme": "light",
+      "bytes": 347442,
+      "width": 1600,
+      "height": 1000,
+      "alt": "The Pull request tab of #43 Let members cancel a swap request in fernleaf-garden/seed-swap: the header says it is open with 1 failing check, and the dashboard's pull-request panel below lists its one changed file, seedswap/routes/swaps.py with 20 lines added, opened on the diff that imports tell_member and adds the DELETE /swaps/<id> route, beside the Description, Commits, Checks 2/3 and Reviews sections",
+      "captured_at": "2026-11-15T00:19:59Z",
+      "kirocrew_commit": "af94fac51f6275a3935dcedfb9554911053cc342",
+      "gateway": "isolated temporary home, approval=reads, stub ACP backend; captured on its own after the rest, with this repository's copy installed from the working tree that became the release commit"
+    },
+    {
       "file": "requests-light.png",
       "name": "requests",
       "theme": "light",

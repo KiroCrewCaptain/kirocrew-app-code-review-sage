@@ -129,6 +129,43 @@
       "alt": "The Requests tab: the two open pull requests that ask sam-fernleaf for a review, #43 Let members cancel a swap request in fernleaf-garden/seed-swap and #7 Show the frost dates on the month header in fernleaf-garden/planting-calendar"
     },
     {
+      "name": "pull-request-tab",
+      "path": "/apps/code-review-sage",
+      "themes": [
+        "light"
+      ],
+      "steps": [
+        {
+          "click": "role=button[name='Keep on']"
+        },
+        {
+          "click": "role=button[name='Pick a repository']"
+        },
+        {
+          "click": "role=menuitem[name='fernleaf-garden/seed-swap']"
+        },
+        {
+          "click": "role=button[name=/Open pull request #43/]"
+        },
+        {
+          "click": "role=tablist[name='Pull request detail'] >> role=tab[name=/^Pull request/]"
+        },
+        {
+          "click": "text=seedswap/routes/swaps.py"
+        },
+        {
+          "wait_for": "text=from seedswap.notify import tell_member"
+        },
+        {
+          "mouse_park": [
+            1300,
+            860
+          ]
+        }
+      ],
+      "alt": "The Pull request tab of #43 Let members cancel a swap request in fernleaf-garden/seed-swap: the header says it is open with 1 failing check, and the dashboard's pull-request panel below lists its one changed file, seedswap/routes/swaps.py with 20 lines added, opened on the diff that imports tell_member and adds the DELETE /swaps/<id> route, beside the Description, Commits, Checks 2/3 and Reviews sections"
+    },
+    {
       "name": "hero",
       "live": true,
       "path": "/apps/code-review-sage",
