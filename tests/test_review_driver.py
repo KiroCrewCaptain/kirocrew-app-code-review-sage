@@ -1323,6 +1323,15 @@ class TestDeterministicPosting(unittest.TestCase):
         self.assertIn("posted_comments", p)              # records count
         self.assertIn("design_comment_posted", p)
 
+    def test_post_task_pipes_the_review_payload_on_stdin(self):
+        # Ported from kirodotdev/KiroCrew#21307: the payload is streamed to
+        # `gh api --input -`, so no temp file holding the review is left behind.
+        p = D.build_post_task("https://github.com/o/r/pull/12345678")
+        self.assertIn("--input -", p)
+        self.assertIn("on stdin", p)
+        self.assertNotIn("<tmpfile>", p)
+        self.assertNotIn("temp JSON file", p)
+
 
 class TestChangeIdAndFetch(unittest.TestCase):
     """The driver's change-id derivation is platform-aware + filesystem-safe, and

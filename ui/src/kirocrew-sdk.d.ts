@@ -65,6 +65,8 @@ declare module '@kirocrew/app-sdk' {
 
   export function useAppApi(): AppApi
   export function useChatLauncher(): { openChat: (opts?: ChatLaunchOptions) => void }
+  /** Navigate the dashboard to one of its routes (the host's own router). */
+  export function useNavigate(): (path: string) => void
   export function useImeGuard(): ImeGuard
   export function useLanguageGeneration(): number
   export function activeLocale(): string

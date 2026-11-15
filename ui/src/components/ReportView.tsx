@@ -22,7 +22,7 @@ import ShipSummaryCard, { SHIP_KEY } from './ShipSummaryCard'
 import BandChips, { BAND_LABEL_KEY } from './BandChips'
 import type { Band, DismissedFinding, ReportRow, RunReport } from '../lib/types'
 
-import { fmtDateTime } from '@kirocrew/app-sdk'
+import { fmtDateTime, useNavigate } from '@kirocrew/app-sdk'
 import { i18nT } from '../i18n'
 import { ErrorNotice } from '@kirocrew/app-sdk/ui'
 /** Sort order for the three bands — the report leads with what needs review. */
@@ -369,6 +369,7 @@ export default function ReportView({
    *  run cannot take a dismissal. */
   onDismissFinding?: (changeId: string, key: string, reason: string | null) => Promise<void>
 }) {
+  const navigate = useNavigate()
   const [active, setActive] = useState<Band | 'all'>('all')
   // Ticked comments, per change. Posting several together puts ONE pending review
   // on the pull request rather than one per comment, which is the difference the
@@ -524,6 +525,15 @@ export default function ReportView({
         {report.report_slug ? (
           <a
             href={`/artifacts/${report.report_slug}`}
+            // A plain click goes through the host's navigator, not a page load:
+            // in an app pop-out window that is what opens the page in the main
+            // window instead of loading the dashboard in the pop-out. A modified
+            // click (new tab, new window) keeps the browser's own handling.
+            onClick={(e) => {
+              if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+              e.preventDefault()
+              navigate(`/artifacts/${report.report_slug}`)
+            }}
             className="inline-flex items-center gap-1.5 text-[12.5px] text-accent hover:underline"
           >
             <ExternalLink size={13} aria-hidden="true" /> {i18nT('apps.codeReviewSage.components.reportView.open_shared_copy')}

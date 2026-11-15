@@ -24,9 +24,13 @@ export function stubLocale(next: string): void {
 
 export const stubOpenChat = vi.fn<(opts?: ChatLaunchOptions) => void>()
 
+/** What the host's navigator was asked to open. */
+export const stubNavigate = vi.fn<(path: string) => void>()
+
 export function resetStubSdk(): void {
   locale = 'en'
   stubOpenChat.mockReset()
+  stubNavigate.mockReset()
 }
 
 export function activeLocale(): string {
@@ -78,6 +82,10 @@ const API: AppApi = { raw, request: unstubbed, get: unstubbed, post: unstubbed, 
 
 export function useAppApi(): AppApi {
   return API
+}
+
+export function useNavigate(): (path: string) => void {
+  return stubNavigate
 }
 
 export function useChatLauncher(): { openChat: (opts?: ChatLaunchOptions) => void } {

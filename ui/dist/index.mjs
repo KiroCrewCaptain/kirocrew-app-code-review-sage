@@ -1,4 +1,4 @@
-import { activeLocale, compareText, fmtDateTime, useAppApi, useChatLauncher, useImeGuard, useLanguageGeneration } from "@kirocrew/app-sdk";
+import { activeLocale, compareText, fmtDateTime, useAppApi, useChatLauncher, useImeGuard, useLanguageGeneration, useNavigate } from "@kirocrew/app-sdk";
 import { Children, cloneElement, createContext, forwardRef, isValidElement, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AlertCircle, AlertTriangle, ArrowLeft, Brain, Check, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleSlash, ClipboardCheck, ClipboardList, ClipboardPaste, Clock, ExternalLink, EyeOff, FolderGit2, GitBranch, GitMerge, GitPullRequest, Inbox, Link2, ListChecks, Loader2, Lock, MessageCircle, MessageSquarePlus, PanelLeftClose, Plus, RefreshCw, RotateCcw, ScanSearch, Search, Settings, Share2, ShieldCheck, ShipWheel, Star, Tag, Trash2, TriangleAlert, Wand2, X, XCircle, XOctagon } from "lucide-react";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
@@ -1354,12 +1354,14 @@ function SageProvider({ children, initialRunId }) {
 		queryKey: [
 			"code-review-sage",
 			"report",
-			selectedRunId
+			selectedRunId,
+			activeRun?.status
 		],
 		queryFn: () => sageApi.runReport(selectedRunId),
 		enabled: !!selectedRunId,
 		initialData: reportSnapshot?.data,
 		initialDataUpdatedAt: reportSnapshot?.at,
+		placeholderData: (prev, prevQuery) => prev?.ready && prevQuery?.queryKey[2] === selectedRunId ? prev : void 0,
 		refetchInterval: () => activeRun?.status === "running" ? LIVE_POLL_MS : false
 	});
 	useEffect(() => {
@@ -3840,7 +3842,7 @@ function FindingCard({ finding, onPost, posted = false, posting = false, selecta
 	const [saving, setSaving] = useState(false);
 	const [failed, setFailed] = useState(false);
 	const save = (value) => {
-		if (!onDismiss) return;
+		if (!onDismiss || saving) return;
 		setSaving(true);
 		setFailed(false);
 		onDismiss(value).then(() => {
@@ -3919,9 +3921,9 @@ function FindingCard({ finding, onPost, posted = false, posting = false, selecta
 					}),
 					onDismiss && /* @__PURE__ */ jsx("button", {
 						type: "button",
-						disabled: saving,
+						"aria-disabled": saving || void 0,
 						onClick: () => save(null),
-						className: "flex-shrink-0 rounded-md bg-transparent px-1.5 py-0.5 text-[11.5px] text-accent hover:underline disabled:opacity-50 cursor-pointer disabled:cursor-default",
+						className: "flex-shrink-0 rounded-md bg-transparent px-1.5 py-0.5 text-[11.5px] text-accent hover:underline aria-disabled:opacity-50 cursor-pointer aria-disabled:cursor-default",
 						children: i18nT("apps.codeReviewSage.components.findingCard.undo_dismiss")
 					})
 				]
@@ -3966,8 +3968,9 @@ function FindingCard({ finding, onPost, posted = false, posting = false, selecta
 							children: i18nT("apps.codeReviewSage.components.findingCard.cancel_dismiss")
 						}), /* @__PURE__ */ jsxs("button", {
 							type: "submit",
-							disabled: saving || !reason.trim(),
-							className: "inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-[11.5px] text-text hover:text-accent hover:border-accent disabled:opacity-50 cursor-pointer disabled:cursor-default",
+							disabled: !reason.trim(),
+							"aria-disabled": saving || void 0,
+							className: "inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-[11.5px] text-text hover:text-accent hover:border-accent disabled:opacity-50 aria-disabled:opacity-50 cursor-pointer disabled:cursor-default aria-disabled:cursor-default",
 							children: [saving && /* @__PURE__ */ jsx(Loader2, {
 								size: 11,
 								className: "animate-spin motion-reduce:animate-none",
@@ -4445,6 +4448,7 @@ function ReportRowCard({ row, postedKeys, isPosting, onPostFinding, selected, on
 	});
 }
 function ReportView({ report, onArchive, archiving = false, archiveError = null, actions = null, postedKeys, isPosting, onPostFinding, onPostSelection, dismissed, onDismissFinding }) {
+	const navigate = useNavigate();
 	const [active, setActive] = useState("all");
 	const [selected, setSelected] = useState(/* @__PURE__ */ new Map());
 	const toggleKey = useCallback((changeId, key) => {
@@ -4559,6 +4563,11 @@ function ReportView({ report, onArchive, archiving = false, archiveError = null,
 						})]
 					}) : actions, report.report_slug ? /* @__PURE__ */ jsxs("a", {
 						href: `/artifacts/${report.report_slug}`,
+						onClick: (e) => {
+							if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+							e.preventDefault();
+							navigate(`/artifacts/${report.report_slug}`);
+						},
 						className: "inline-flex items-center gap-1.5 text-[12.5px] text-accent hover:underline",
 						children: [
 							/* @__PURE__ */ jsx(ExternalLink, {
