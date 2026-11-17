@@ -3603,7 +3603,7 @@ function RailHeader({ leading, narrow = false, onReselect }) {
 			}),
 			!narrow && /* @__PURE__ */ jsx("span", {
 				className: "flex-shrink-0 text-[12px] text-muted opacity-70",
-				children: i18nT("apps.codeReviewSage.components.leftRail.version", { version: "0.9.4" })
+				children: i18nT("apps.codeReviewSage.components.leftRail.version", { version: "0.9.5" })
 			}),
 			/* @__PURE__ */ jsx("nav", {
 				className: "ml-auto flex items-center gap-0.5 flex-shrink-0",

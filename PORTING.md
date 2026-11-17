@@ -30,7 +30,7 @@ change here.
 
 ## What carried over unchanged
 
-- `app.json` `name` (`code-review-sage`), `version` (`0.9.4`, the version the wheel
+- `app.json` `name` (`code-review-sage`), `version` (`0.9.5`, the version the wheel
   built-in carries once Kiro Crew pins this release), `author`,
   `permissions` (`api: ["/api/apps/code-review-sage", "/api/apps/code-review-sage/*",
   "/api/source/pull-request"]`, `network`, `storage`; the last `api` entry is the
