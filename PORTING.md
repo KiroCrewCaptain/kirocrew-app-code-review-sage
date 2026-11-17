@@ -35,7 +35,11 @@ change here.
   `permissions` (`api: ["/api/apps/code-review-sage", "/api/apps/code-review-sage/*",
   "/api/source/pull-request"]`, `network`, `storage`; the last `api` entry is the
   one kirodotdev/KiroCrew#36343 adds to the built-in's own manifest, which the
-  pull-request tab and the publish bar call, see gaps 2 and 3), `dependencies` (`commands: ["gh"]`), `platform`,
+  pull-request tab and the publish bar call, see gaps 2 and 3; and `chatLaunch`,
+  `{"keyPrefix": "sage-followup-", "agents": ["code-review-sage-reviewer", "kirocrew"],
+  "folder": "Sage Review", "memoryModes": ["persistent"]}`, which
+  kirodotdev/KiroCrew#37492 adds to the built-in's own manifest for the follow-up
+  chat, see gap 1), `dependencies` (`commands: ["gh"]`), `platform`,
   `defaultEnabled: false`, `skills`, and every display field. 
   `tests/test_manifest_contract.py` compares them with the built-in's manifest
   (`tests/fixtures/builtin-app.json`), because adoption refuses a manifest that
@@ -128,17 +132,26 @@ above), refuses. `register_routes` reports what is missing through `ctx.health`
 
 ## Remaining gaps
 
-1. **A new follow-up session cannot be opened.** The built-in's page armed the
+1. **Opening a new follow-up session: closed.** The built-in's page armed the
    resume (`POST .../followup`) and then created the named chat slot through the
    dashboard's own `POST /api/chat/slots` (`website/src/apps/code-review-sage/components/ReviewChat.tsx:155`),
    with the reviewer's agent, the `Sage Review` folder and the title. That path
    is outside this app's API grant, and adoption refuses a widened grant. This
-   copy CONTINUES a follow-up session that already exists (the host's
-   `useChatLauncher().openChat({slotKey})`), and says plainly that a new one
-   cannot be opened from the app yet. **This is a user-visible regression, so the
-   adoption pin must wait for a seam**: for example `openChat` creating a missing
-   `slotKey` with an agent, a title, a folder and a memory mode, under the app's
-   identity.
+   copy sends the same create through the host's chat launcher,
+   `useChatLauncher().createChat` (App Kit seam level 10,
+   kirodotdev/KiroCrew#37492), with the same key, agent, title, folder and memory
+   mode, title and folder only on a new session, and then opens the key it
+   answers with `openChat({slotKey})`. The gateway holds that create to the
+   manifest's `permissions.chatLaunch`, which declares exactly what the built-in's
+   own manifest declares (`tests/test_manifest_chat_launch.py` pins it to the
+   follow-up's key derivation, both review agents, the folder and the memory
+   mode), so adoption is no widening. A slot the built-in opened before the seam
+   is the person's chat under the same prefix, and reopens the same way.
+   `createChat` is feature-detected on the launcher, never by the level: on a
+   host without it this copy only CONTINUES a follow-up session that already
+   exists (`openChat({slotKey})`), and says plainly that a new one cannot be
+   opened from the app there
+   (`apps.codeReviewSage.components.reviewChat.new_session_unavailable`).
 2. **The pull request's own view: closed.** The built-in's detail pane had a
    "Pull request" tab rendering the dashboard's shared `PullRequestPanel`
    (description, checks, comments, the file diff, commits) and header chips
@@ -243,6 +256,8 @@ Each change that landed on the built-in after the port (Kiro Crew `main` after
 | kirodotdev/KiroCrew#32618 | A review that finishes while it is open shows its report, instead of staying on "not ready" until it is reopened | `ui/src/context.tsx`; `ui/tests/CodeReviewSageReportAfterFinish.test.tsx` |
 | kirodotdev/KiroCrew#33108 | Dismiss finding and Undo keep keyboard focus while they save, and after a failed save | `ui/src/components/FindingCard.tsx`; `ui/tests/CodeReviewSageFindingCardFocus.test.tsx` |
 | kirodotdev/KiroCrew#32865 | Open shared copy opens the report through the dashboard's navigator, so in an app pop-out window it opens in the main window instead of loading the dashboard in the pop-out; a modified click still opens a new tab | `ui/src/components/ReportView.tsx` (the host's `useNavigate`, as this page has no router); `ui/tests/CodeReviewSageReportView.test.tsx` |
+| kirodotdev/KiroCrew#37492 | Open a follow-up session works again on a review that has none yet: the panel creates the reviewer's chat through the host's chat launcher, held to the manifest's `permissions.chatLaunch` (gap 1). On a host before App Kit level 10 the panel keeps offering only Continue, as before | `app.json`, `ui/src/components/ReviewChat.tsx`, `ui/src/kirocrew-sdk.d.ts`; `tests/test_manifest_chat_launch.py`, `tests/fixtures/builtin-app.json`, `ui/tests/CodeReviewSageReviewChat.test.tsx`, `ui/tests/stubs/app-sdk.ts` |
+| kirodotdev/KiroCrew#37408 | Nothing in the app: it redacts through the host's own passes, so it masks what the host's rule table masks. Its tests now plant generated tokens in their published formats, as the built-in's do, since a shape the table does not list is no longer masked. The test dependency pins Kiro Crew `main` `1dfee9ace2` | `tests/test_backend_routes_consolidation.py`, `tests/test_backend_routes_redaction.py`, `tests/test_discovery.py`, `tests/test_finding_headline.py`, `tests/test_host_seams.py`, `tests/test_learning.py`, `tests/test_report.py`, `tests/requirements.txt` |
 
 ## Layout
 
@@ -271,8 +286,7 @@ capture/                # README media: scenes, harness, the stand-in gh
 ## UI
 
 The page is `ui/src/`, ported from `website/src/apps/code-review-sage/` with the
-same markup, class strings and behaviour except where gap 1 removed a host
-surface. `npm run build` in `ui/` writes the committed `ui/dist/index.mjs`; CI
+same markup, class strings and behaviour. `npm run build` in `ui/` writes the committed `ui/dist/index.mjs`; CI
 rebuilds it and fails on a difference. Every request goes through the host's
 scoped client (`useAppApi().raw`, handed to `setTransport` by the root), so a
 path outside `permissions.api` is refused in the browser; the backend's `code`
@@ -280,7 +294,8 @@ and refused character are read back out of the client's refusal, as the
 built-in read them off the response. Strings are `i18nT()` over
 `ui/i18n/<locale>.json` for all 12 dashboard locales, under the dashboard's own
 key paths; one key is new
-(`apps.codeReviewSage.components.reviewChat.new_session_unavailable`, gap 1).
+(`apps.codeReviewSage.components.reviewChat.new_session_unavailable`, shown only on
+a host without the chat launcher's create, gap 1).
 
 One behaviour was fixed on the way: starting a review selected the new run
 before the run list that names it was re-read, and the effect that drops a
@@ -301,7 +316,7 @@ the progress. The effect now waits for the re-read
 | `react-router-dom` `useSearchParams` / `useNavigate` | `?run=` read off `window.location`; the host's chat launcher |
 | `api.pullRequestSource`, `api.pullRequestPendingReview` / `submitPullRequestReview` | `sourceApi` in `ui/src/api.ts`, the same paths and bodies over the scoped client (gaps 2 and 3, closed) |
 | `PullRequestPanel` from `app-sdk` | The App SDK's `PullRequestPanel`, read through `ui/src/hostSdk.ts` (level 2); without it the review alone |
-| `api.createChatSlot` | Gap 1 |
+| `api.createAppChatSlot` (before kirodotdev/KiroCrew#37492, `api.createChatSlot`) | `useChatLauncher().createChat` (level 10), then `openChat({slotKey})`; without it only Continue (gap 1, closed) |
 | `i18n/t.i18nT` with keys in the dashboard's catalogs | `ui/src/i18n.ts` over the app's own catalogs |
 
 ## Tests
@@ -315,7 +330,7 @@ the progress. The effect now waits for the re-read
 | The sage cases of `test/test_instance_credential_pairing.py` | `tests/test_review_driver_credential_pairing.py` | Plus: a host without the resolver sends no credential. |
 | The sage cases of `test/test_chat_folder_created_at.py`, `test_windows_replace_retry_sweep.py`, `test_security_source_scan_invariants.py`, `test_transport_permission_floor.py`, `test_surface_deny_notice_sites.py` | `tests/test_ported_core_cases.py` | The same assertions over this repository's files. |
 | (none) | `tests/test_host_seams.py`, `tests/test_no_host_imports.py`, `tests/test_manifest_contract.py` | Every fail-closed path above and the capability report; only `_host` lookups reach `kiro_crew`; manifest parity, the skills' digests, the bundle's imports, the hooks loading through the gateway's module loader, no hardcoded model id, an adoptable tree. |
-| `website/src/test/CodeReviewSage*`, `codeReviewSage*`, `Sage*`, `api.coverage.test.ts` | `ui/tests/`, same names | Run by vitest on jsdom with stand-ins for the host SDK (`ui/tests/stubs/`, plus a router and catalog stand-in). The selects are native in the stand-in, and the SDK's `PullRequestPanel` is a stand-in that renders what it finds under the shared query key. `CodeReviewSagePublish`, `CodeReviewSagePrSource` and the pull-request cases of `CodeReviewSageShell` are the built-in's, over `sourceApi`; `CodeReviewSageReviewChat` was rewritten for gap 1. |
+| `website/src/test/CodeReviewSage*`, `codeReviewSage*`, `Sage*`, `api.coverage.test.ts` | `ui/tests/`, same names | Run by vitest on jsdom with stand-ins for the host SDK (`ui/tests/stubs/`, plus a router and catalog stand-in). The selects are native in the stand-in, and the SDK's `PullRequestPanel` is a stand-in that renders what it finds under the shared query key. `CodeReviewSagePublish`, `CodeReviewSagePrSource` and the pull-request cases of `CodeReviewSageShell` are the built-in's, over `sourceApi`; `CodeReviewSageReviewChat` creates through the launcher's `createChat` stand-in, and pins the older-host Continue-only panel (gap 1). |
 | (none) | `ui/tests/externalSeams.test.tsx` | Catalog coverage and fallback, the scoped transport and its error mapping, the menu and focus-trap stand-ins, the older-host fallbacks. |
 
 ## What Kiro Crew keeps doing
@@ -323,7 +338,9 @@ the progress. The effect now waits for the re-read
 The release that adds adoption still ships the built-in. A user's built-in
 record moves onto this repository at the commit Kiro Crew pins, on the restart
 after the tree is fetched and verified; a record that cannot move keeps running
-the built-in copy, unchanged. For this app the pin waits on gap 1.
+the built-in copy, unchanged. Gap 1 closed with App Kit seam level 10, so the pin
+for this app names `minAppSdkLevel` 10 (the manifest's `chatLaunch`): a host
+below it keeps the built-in.
 
 ## Release handoff: one commit for both pins
 
@@ -332,7 +349,7 @@ must be the ported tree.
 
 1. Call the full 40-hex SHA of this repository's `main` `C`
    (`git rev-parse HEAD`).
-2. In the Kiro Crew release PR that adds adoption, once gap 1 is closed, run
+2. In the Kiro Crew release PR that adds adoption, run
    `python3 scripts/adoption_pin.py compute <this URL> C` and add the row it
    prints (commit, `treeSha256`, `archiveSha256`, `legacyNav`) to
    `src/kiro_crew/apps/adoption-pins.json`; then

@@ -16,12 +16,14 @@
 // Collapsed by default: most reports are read without questions, and the findings
 // are the substance of this tab.
 //
-// As an installed app the page can CONTINUE a follow-up session that already
-// exists (the host's chat launcher opens a slot by key), but it cannot CREATE one:
-// the built-in created the slot through the dashboard's `POST /api/chat/slots`,
-// which is outside this app's API grant and has no App Kit seam yet (PORTING.md,
-// "Remaining gaps"). A resumable review with no session yet therefore says so
-// instead of offering a button that cannot open the reviewer's context.
+// The slot is created, or reopened, through the host's chat launcher
+// (`useChatLauncher().createChat`, App Kit level 10), which the gateway holds to
+// the manifest's `permissions.chatLaunch`: the `sage-followup-` key, the review
+// agents, the `Sage Review` folder and persistent memory. The built-in sent the
+// same create through the dashboard's own `POST /api/chat/slots`. A host without
+// `createChat` can only open a session that already exists by key, so there a
+// resumable review with no session yet says a new one cannot be opened instead of
+// offering a button that cannot open the reviewer's context.
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, MessageCircle, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
@@ -131,7 +133,11 @@ export default function ReviewChat(
 ) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
-  const { openChat } = useChatLauncher()
+  const launcher = useChatLauncher()
+  const { openChat } = launcher
+  // Feature-detected on the launcher, never by the level: an older host's
+  // launcher has `openChat` only.
+  const createChat = typeof launcher.createChat === 'function' ? launcher.createChat : undefined
 
   const stateQ = useQuery({
     queryKey: ['sage', 'chat', runId, changeId],
@@ -149,11 +155,25 @@ export default function ReviewChat(
 
   const start = useMutation({
     mutationFn: async () => {
-      // The app checks the resume is still armed (re-arming it if the session map
-      // lost it) and names the slot; the session itself already exists, so the
-      // host's launcher only has to open it.
+      // Two calls, deliberately. The app arms the resume (re-arming it if the
+      // session map lost it) and hands back what the slot needs; the slot itself
+      // is created through the host so agent binding, workspace resolution and
+      // title redaction have one implementation rather than a copy in this app.
       const prep = await sageApi.followupStart(runId, changeId)
-      return prep.slot_key
+      // An older host: the session already exists (no button is offered for a new
+      // one there), so the launcher only has to open it.
+      if (!createChat) return prep.slot_key
+      // Title and folder are sent only when the session is being CREATED. The
+      // create addresses an existing slot by name and then re-pins whatever it is
+      // given, so sending them again on a continue would revert a session the user
+      // has since renamed or moved into a folder of their own.
+      return createChat({
+        slotKey: prep.slot_key,
+        agent: prep.agent,
+        memoryMode: 'persistent',
+        title: alreadyOpen ? undefined : prep.title,
+        folderId: alreadyOpen ? undefined : (prep.folder_id || undefined),
+      })
     },
     onSuccess: (slotKey: string) => {
       setError('')
@@ -220,7 +240,7 @@ export default function ReviewChat(
               ? 'flex flex-col gap-2 border-t border-border pt-2.5'
               : 'flex flex-col gap-2'}
             >
-              {resumable && !alreadyOpen ? (
+              {resumable && !alreadyOpen && !createChat ? (
                 <div className="text-[12px] leading-[1.6] text-muted">
                   {i18nT('apps.codeReviewSage.components.reviewChat.new_session_unavailable')}
                 </div>

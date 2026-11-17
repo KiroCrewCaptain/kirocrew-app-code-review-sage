@@ -38,6 +38,20 @@ declare module '@kirocrew/app-sdk' {
     sessionFolder?: false
   }
 
+  /** One chat `useChatLauncher().createChat` creates or reopens (App Kit level 10). */
+  export interface ChatCreateOptions {
+    /** The manifest's `permissions.chatLaunch.keyPrefix` and 1 to 128 of `[A-Za-z0-9._-]`. */
+    slotKey: string
+    /** One of `permissions.chatLaunch.agents`. */
+    agent: string
+    /** Sidebar title for a NEW chat. Sent again on a reopen, it renames the chat. */
+    title?: string
+    /** Id of a folder named `permissions.chatLaunch.folder`. */
+    folderId?: string
+    /** One of `permissions.chatLaunch.memoryModes`; `'persistent'` when omitted. */
+    memoryMode?: 'persistent' | 'incognito' | 'temporary'
+  }
+
   export interface ImeGuard {
     /** Spread onto a text control so the guard tracks IME composition on it. */
     bindComposition<E extends HTMLElement = HTMLInputElement>(opts?: {
@@ -64,7 +78,13 @@ declare module '@kirocrew/app-sdk' {
   export type DateOptions = Omit<Intl.DateTimeFormatOptions, 'localeMatcher'>
 
   export function useAppApi(): AppApi
-  export function useChatLauncher(): { openChat: (opts?: ChatLaunchOptions) => void }
+  export function useChatLauncher(): {
+    openChat: (opts?: ChatLaunchOptions) => void
+    /** Level 10: create or reopen the chat the manifest's `permissions.chatLaunch`
+     *  declares and resolve to its slot key, without navigating. An older host
+     *  returns no such property, so it is feature-detected where it is used. */
+    createChat?: (opts: ChatCreateOptions) => Promise<string>
+  }
   /** Navigate the dashboard to one of its routes (the host's own router). */
   export function useNavigate(): (path: string) => void
   export function useImeGuard(): ImeGuard
