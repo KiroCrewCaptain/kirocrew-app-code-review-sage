@@ -119,9 +119,13 @@ class TestTheCapabilityReport(unittest.TestCase):
 class TestRedactionFailsClosed(unittest.TestCase):
     def test_the_host_passes_are_used(self) -> None:
         from kiro_crew.security import redact_credentials
+        from kiro_crew.testing.synthetic_credentials import github_classic
 
         self.assertIs(store.redact_credentials, redact_credentials)
-        self.assertNotIn("ghp_", store.redact_text("token ghp_" + "a" * 36))
+        # A token in its published format (a valid checksum): the host's rule table
+        # masks nothing else.
+        token = github_classic(seed=119)
+        self.assertNotIn(token, store.redact_text("token " + token))
 
     def test_no_host_passes_withhold_the_text(self) -> None:
         with mock.patch.object(store, "redact_credentials", None):

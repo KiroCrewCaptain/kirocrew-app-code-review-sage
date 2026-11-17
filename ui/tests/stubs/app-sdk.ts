@@ -1,10 +1,10 @@
 /**
- * A light stand-in for the host's `@kirocrew/app-sdk`, at App Kit level 2.
+ * A light stand-in for the host's `@kirocrew/app-sdk`, at App Kit level 10.
  *
  * Only the names the bundle uses, with the host's documented behaviour where a
  * test depends on it. The `stub*` / `resetStubSdk` exports are test controls; no
  * host module has them. A test that needs an older host replaces this module
- * with `vi.mock`.
+ * with `vi.mock`, or, for the chat launcher alone, calls `stubLauncherWithoutCreate`.
  *
  * `useAppApi().raw` is a same-origin `fetch` that throws the host's scoped error
  * shape (`status` + raw `body`) on a non-2xx, so a test that stubs `fetch` drives
@@ -14,7 +14,9 @@
 import { vi } from 'vitest'
 import { createElement, type KeyboardEvent } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import type { AppApi, ChatLaunchOptions, DateOptions, NumberOptions } from '@kirocrew/app-sdk'
+import type {
+  AppApi, ChatCreateOptions, ChatLaunchOptions, DateOptions, NumberOptions,
+} from '@kirocrew/app-sdk'
 
 let locale = 'en'
 
@@ -25,12 +27,28 @@ export function stubLocale(next: string): void {
 
 export const stubOpenChat = vi.fn<(opts?: ChatLaunchOptions) => void>()
 
+/** The launcher's level-10 create. Resolves to the key it was given unless a test
+ *  says otherwise, as the host does when the gateway answers no other key. */
+export const stubCreateChat = vi.fn<(opts: ChatCreateOptions) => Promise<string>>(
+  async opts => opts.slotKey,
+)
+
+let launcherHasCreate = true
+
+/** The launcher of a host before App Kit level 10: `openChat` only. */
+export function stubLauncherWithoutCreate(): void {
+  launcherHasCreate = false
+}
+
 /** What the host's navigator was asked to open. */
 export const stubNavigate = vi.fn<(path: string) => void>()
 
 export function resetStubSdk(): void {
   locale = 'en'
   stubOpenChat.mockReset()
+  stubCreateChat.mockReset()
+  stubCreateChat.mockImplementation(async opts => opts.slotKey)
+  launcherHasCreate = true
   stubNavigate.mockReset()
 }
 
@@ -55,7 +73,7 @@ export function compareText(a: string, b: string): number {
   return new Intl.Collator(locale, { numeric: true, sensitivity: 'base' }).compare(a, b)
 }
 
-export const APP_SDK_LEVEL = 2
+export const APP_SDK_LEVEL = 10
 
 interface PanelProps {
   sources: { url: string; provider: string; number: number; repo: string; kind: string }[]
@@ -115,8 +133,13 @@ export function useNavigate(): (path: string) => void {
   return stubNavigate
 }
 
-export function useChatLauncher(): { openChat: (opts?: ChatLaunchOptions) => void } {
-  return { openChat: stubOpenChat }
+export function useChatLauncher(): {
+  openChat: (opts?: ChatLaunchOptions) => void
+  createChat?: (opts: ChatCreateOptions) => Promise<string>
+} {
+  return launcherHasCreate
+    ? { openChat: stubOpenChat, createChat: stubCreateChat }
+    : { openChat: stubOpenChat }
 }
 
 export function useImeGuard() {

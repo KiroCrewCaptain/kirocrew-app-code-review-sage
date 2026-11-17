@@ -5218,7 +5218,9 @@ function Turn({ turn }) {
 function ReviewChat({ runId, changeId }) {
 	const [open, setOpen] = useState(false);
 	const [error, setError] = useState("");
-	const { openChat } = useChatLauncher();
+	const launcher = useChatLauncher();
+	const { openChat } = launcher;
+	const createChat = typeof launcher.createChat === "function" ? launcher.createChat : void 0;
 	const stateQ = useQuery({
 		queryKey: [
 			"sage",
@@ -5235,7 +5237,15 @@ function ReviewChat({ runId, changeId }) {
 	const alreadyOpen = Boolean(state?.followup_open);
 	const start = useMutation({
 		mutationFn: async () => {
-			return (await sageApi.followupStart(runId, changeId)).slot_key;
+			const prep = await sageApi.followupStart(runId, changeId);
+			if (!createChat) return prep.slot_key;
+			return createChat({
+				slotKey: prep.slot_key,
+				agent: prep.agent,
+				memoryMode: "persistent",
+				title: alreadyOpen ? void 0 : prep.title,
+				folderId: alreadyOpen ? void 0 : prep.folder_id || void 0
+			});
 		},
 		onSuccess: (slotKey) => {
 			setError("");
@@ -5291,7 +5301,7 @@ function ReviewChat({ runId, changeId }) {
 				}),
 				!stateQ.isLoading && /* @__PURE__ */ jsx("div", {
 					className: turns.length > 0 ? "flex flex-col gap-2 border-t border-border pt-2.5" : "flex flex-col gap-2",
-					children: resumable && !alreadyOpen ? /* @__PURE__ */ jsx("div", {
+					children: resumable && !alreadyOpen && !createChat ? /* @__PURE__ */ jsx("div", {
 						className: "text-[12px] leading-[1.6] text-muted",
 						children: i18nT("apps.codeReviewSage.components.reviewChat.new_session_unavailable")
 					}) : resumable ? /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsx("div", {

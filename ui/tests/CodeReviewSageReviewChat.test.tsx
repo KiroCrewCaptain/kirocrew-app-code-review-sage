@@ -9,12 +9,12 @@
 //                      without that context answers confidently about a review it
 //                      knows nothing about.
 //
-// It also pins the continue sequence (this app re-arms the resume, then the host's
-// chat launcher opens the existing slot), that a NEW session is not offered (the
-// built-in created it through the dashboard's `POST /api/chat/slots`, which an
-// installed app cannot reach; PORTING.md), and that a backend error is rendered
-// from the catalog via its `code` -- never as the server's English prose, which
-// would land untranslated inside a localized page.
+// It also pins the two-call open sequence (this app arms the resume, the host's
+// chat launcher creates the slot under the manifest's `permissions.chatLaunch` and
+// opens it), what a host without that create offers (only a session that already
+// exists, opened by key), and that a backend error is rendered from the catalog
+// via its `code` -- never as the server's English prose, which would land
+// untranslated inside a localized page.
 //
 // And it pins who gets markdown in the stored history: the reviewer's answers do
 // (it writes markdown), the user's own words and the raw reasoning dump do not
@@ -44,7 +44,11 @@ vi.mock('../src/api', () => ({
   SageApiError: FakeSageApiError,
 }))
 
-import { stubOpenChat as openChat } from './stubs/app-sdk'
+import {
+  stubCreateChat as createChat,
+  stubLauncherWithoutCreate,
+  stubOpenChat as openChat,
+} from './stubs/app-sdk'
 
 const ReviewChat = (await import(
   '../src/components/ReviewChat')).default
@@ -105,10 +109,11 @@ describe('ReviewChat', () => {
     expect(screen.queryByRole('button', { name: /follow-up session/i })).toBeNull()
   })
 
-  it('says a new session cannot be opened from the app yet, and offers no button', async () => {
-    // Resumable, but no session exists: creating one needs the dashboard's slot
-    // endpoint, which an installed app cannot call. A button here would open a
-    // session that knows nothing about the review.
+  it('on a host without the create, says a new session cannot be opened, and offers no button', async () => {
+    // Resumable, but no session exists, and the host's launcher can only open a
+    // slot that already exists. A button here would open a session that knows
+    // nothing about the review.
+    stubLauncherWithoutCreate()
     chatState.mockResolvedValue(state())
     await expand()
     await waitFor(() => expect(
@@ -164,7 +169,82 @@ describe('ReviewChat', () => {
       .toBeNull()
   })
 
-  it('re-arms the resume, then opens the existing slot through the host launcher', async () => {
+  it('continuing does not revert a session the user renamed or moved', async () => {
+    // The create addresses an existing slot by NAME and then re-pins whatever
+    // title and folder it is given, so sending them on a continue would silently
+    // undo the user's own rename and filing.
+    chatState.mockResolvedValue(state({ followup_open: true }))
+    followupStart.mockResolvedValue({
+      ok: true,
+      slot_key: 'sage-followup-abc123def456',
+      agent: 'sage-reviewer',
+      folder_id: 'fold1',
+      title: 'followup-pr#42-fix the thing',
+    })
+    await expand()
+    fireEvent.click(await screen.findByRole('button',
+      { name: /continue the follow-up session/i }))
+    await waitFor(() => expect(createChat).toHaveBeenCalled())
+    expect(createChat.mock.calls[0][0]).toEqual({
+      slotKey: 'sage-followup-abc123def456',
+      agent: 'sage-reviewer',
+      memoryMode: 'persistent',
+      title: undefined,
+      folderId: undefined,
+    })
+    await waitFor(() => expect(openChat).toHaveBeenCalledWith(
+      { slotKey: 'sage-followup-abc123def456' }))
+  })
+
+  it('arms the resume, then creates the slot, then opens it', async () => {
+    chatState.mockResolvedValue(state())
+    followupStart.mockResolvedValue({
+      ok: true,
+      slot_key: 'sage-followup-abc123def456',
+      agent: 'sage-reviewer',
+      folder_id: 'fold1',
+      title: 'followup-pr#42-fix the thing',
+    })
+    await expand()
+    fireEvent.click(await screen.findByRole('button',
+      { name: /open a follow-up session/i }))
+    await waitFor(() => expect(followupStart).toHaveBeenCalledWith('r1', 'c1'))
+    // The slot is created through the host's chat launcher, carrying the agent
+    // the review RAN as: a follow-up created under a different agent gets a
+    // different tool surface than the session it is resuming. The gateway holds
+    // the create to the manifest's `permissions.chatLaunch`.
+    await waitFor(() => expect(createChat).toHaveBeenCalled())
+    expect(createChat.mock.calls[0][0]).toEqual({
+      slotKey: 'sage-followup-abc123def456',
+      agent: 'sage-reviewer',
+      memoryMode: 'persistent',
+      title: 'followup-pr#42-fix the thing',
+      folderId: 'fold1',
+    })
+    await waitFor(() => expect(openChat).toHaveBeenCalledWith(
+      { slotKey: 'sage-followup-abc123def456' }))
+    expect(createChat.mock.invocationCallOrder[0])
+      .toBeLessThan(openChat.mock.invocationCallOrder[0])
+  })
+
+  it('opens the key the create answers', async () => {
+    chatState.mockResolvedValue(state())
+    followupStart.mockResolvedValue({
+      ok: true, slot_key: 'sage-followup-abc', agent: 'kirocrew', folder_id: '', title: 't',
+    })
+    createChat.mockResolvedValue('sage-followup-abc-1')
+    await expand()
+    fireEvent.click(await screen.findByRole('button',
+      { name: /open a follow-up session/i }))
+    // An empty folder id is no folder.
+    await waitFor(() => expect(createChat).toHaveBeenCalled())
+    expect(createChat.mock.calls[0][0].folderId).toBeUndefined()
+    await waitFor(() => expect(openChat).toHaveBeenCalledWith(
+      { slotKey: 'sage-followup-abc-1' }))
+  })
+
+  it('on a host without the create, re-arms the resume, then opens the existing slot', async () => {
+    stubLauncherWithoutCreate()
     chatState.mockResolvedValue(state({ followup_open: true }))
     followupStart.mockResolvedValue({
       ok: true,
@@ -181,6 +261,7 @@ describe('ReviewChat', () => {
     // or folder sent again would undo the user's own rename and filing).
     await waitFor(() => expect(openChat).toHaveBeenCalledWith(
       { slotKey: 'sage-followup-abc123def456' }))
+    expect(createChat).not.toHaveBeenCalled()
   })
 
   it('does not open the slot when arming the resume is refused', async () => {
@@ -194,6 +275,22 @@ describe('ReviewChat', () => {
     fireEvent.click(await screen.findByRole('button',
       { name: /continue the follow-up session/i }))
     await waitFor(() => expect(screen.getByText(/no longer on disk/i)).toBeTruthy())
+    expect(createChat).not.toHaveBeenCalled()
+    expect(openChat).not.toHaveBeenCalled()
+  })
+
+  it('does not create a slot for a new session when arming the resume is refused', async () => {
+    // The order matters: a slot created for a resume that was refused is a
+    // session with no review context and no way to tell.
+    chatState.mockResolvedValue(state())
+    followupStart.mockRejectedValue(
+      new FakeSageApiError('the reviewer\'s session is no longer on disk',
+        'followup_transcript_gone'))
+    await expand()
+    fireEvent.click(await screen.findByRole('button',
+      { name: /open a follow-up session/i }))
+    await waitFor(() => expect(screen.getByText(/no longer on disk/i)).toBeTruthy())
+    expect(createChat).not.toHaveBeenCalled()
     expect(openChat).not.toHaveBeenCalled()
   })
 
@@ -223,6 +320,23 @@ describe('ReviewChat', () => {
     await waitFor(() => expect(
       screen.getByText(/session could not be opened/i)).toBeTruthy())
     expect(screen.queryByText(/question could not be answered/i)).toBeNull()
+    expect(openChat).not.toHaveBeenCalled()
+  })
+
+  it('a refused create lands on the same action-named string and opens nothing', async () => {
+    // The gateway refuses a create outside the manifest's declaration with one
+    // 403; that is not a SageApiError either, so it lands on the generic string.
+    chatState.mockResolvedValue(state())
+    followupStart.mockResolvedValue({
+      ok: true, slot_key: 'k', agent: 'a', folder_id: '', title: 't',
+    })
+    createChat.mockRejectedValue(Object.assign(
+      new Error('API 403: app_chat_launch_refused'), { status: 403, body: '' }))
+    await expand()
+    fireEvent.click(await screen.findByRole('button',
+      { name: /open a follow-up session/i }))
+    await waitFor(() => expect(
+      screen.getByText(/session could not be opened/i)).toBeTruthy())
     expect(openChat).not.toHaveBeenCalled()
   })
 

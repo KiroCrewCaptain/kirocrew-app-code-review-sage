@@ -90,10 +90,9 @@ starts switched off:
 3. Choose **Enable** on the tile (it is also in the tile's **⋯** menu).
 4. **Code Review Sage** now appears under **Apps** in the sidebar.
 
-The copy that comes with Kiro Crew can also start a new follow-up chat with the
-reviewer. This repository's copy cannot do that yet (see
-[Development](#development)); it can continue a follow-up chat that already
-exists.
+On a Kiro Crew older than the one that lets an app page open a chat it
+declares, this copy can continue a follow-up chat that already exists but cannot
+start a new one (see [Development](#development)).
 
 **Coming later: from the Kiro Crew App Store.** Once this app is listed there:
 
@@ -213,8 +212,7 @@ permissions and the same data folder, so a later Kiro Crew release can move an
 existing built-in install onto this source in place, at a commit pinned in that
 release. Until a user's Kiro Crew does that, it keeps running its built-in
 copy, and nothing here changes what they run. [PORTING.md](PORTING.md) lists
-every place this copy differs from the built-in and why, and what Kiro Crew
-must add first (gap 1: opening a new follow-up chat).
+every place this copy differs from the built-in and why.
 
 | Path | What it is |
 |---|---|

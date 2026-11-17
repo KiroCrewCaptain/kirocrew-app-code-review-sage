@@ -21,6 +21,7 @@ from tests.backend_routes_helpers import (
     _load_routes_module,
 )
 from tests.fixtures import OwnerRequest
+from kiro_crew.testing.synthetic_credentials import github_classic
 
 
 class TestConsolidateRedactsMergedContent:
@@ -35,7 +36,7 @@ class TestConsolidateRedactsMergedContent:
 
     def test_credential_in_merged_markdown_is_scrubbed_before_the_write(self, tmp_path):
 
-        secret = "ghp_" + "A" * 36
+        secret = github_classic(seed=301)
         # Real pattern markdown (a "### " heading), so the pattern-shape
         # guard admits it and redaction is what this test exercises.
         merged = "### Never hardcode a credential\n" f"The reviewed diff hardcoded one: {secret}\n"
