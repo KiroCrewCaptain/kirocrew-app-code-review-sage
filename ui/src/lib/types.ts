@@ -193,16 +193,18 @@ export interface RunReport {
 
 // --- Repos + PRs -------------------------------------------------------------
 
-export interface PinnedRepo {
+export interface RepoIdentity {
+  host?: string
   owner: string
   repo: string
+}
+
+export interface PinnedRepo extends RepoIdentity {
   full_name?: string
   added_at?: string
 }
 
-export interface RecentRepo {
-  owner: string
-  repo: string
+export interface RecentRepo extends RepoIdentity {
   full_name: string
   last_contributed_at: string
   contribution_count: number
@@ -221,9 +223,7 @@ export interface RecentReposResponse {
 }
 
 /** A repo the `gh` user can reach at all (owned / collaborator / org member). */
-export interface UserRepo {
-  owner: string
-  repo: string
+export interface UserRepo extends RepoIdentity {
   full_name: string
   pushed_at: string
   private: boolean
@@ -329,11 +329,11 @@ export interface NamespacesResponse {
 export interface AddRepoResponse {
   ok: boolean
   repos: PinnedRepo[]
-  added?: { owner: string; repo: string }
+  added?: RepoIdentity
   /** Set when a PULL REQUEST url was pasted: its repo was pinned and this is the
    *  pull request itself, so the caller can open it. */
   pull_request?: {
-    owner: string; repo: string; number: number; url: string; change_id: string
+    host?: string; owner: string; repo: string; number: number; url: string; change_id: string
   }
 }
 

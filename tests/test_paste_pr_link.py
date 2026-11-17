@@ -127,21 +127,50 @@ class TestRepoEndpointWithPullRequest(unittest.IsolatedAsyncioTestCase):
         cfg["github_hosts"] = ["github.com", "acme.ghe.com"]
         cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
 
-    async def test_a_ghe_pull_request_cannot_be_pinned(self):
-        # The pinned-repo store carries no host, so pinning would silently target
-        # the wrong instance later; the refusal points at the PR paste flow.
+    async def test_a_ghe_pull_request_pins_its_host(self):
         self._allow_ghe_host()
         resp = await routes._handle_repos(_FakeRequest(  # type: ignore[arg-type]
             {"repo": "https://acme.ghe.com/o/r/pull/9"}))
-        self.assertEqual(resp.status, 400)
-        self.assertIn("unsupported_repo_host", _text(resp))
+        self.assertEqual(resp.status, 200, resp.text)
+        payload = json.loads(resp.text or "{}")
+        self.assertEqual(
+            payload["added"],
+            {"host": "acme.ghe.com", "owner": "o", "repo": "r"},
+        )
+        self.assertEqual(discovery.read_repos()[0]["host"], "acme.ghe.com")
+        self.assertEqual(
+            payload["pull_request"]["url"],
+            "https://acme.ghe.com/o/r/pull/9",
+        )
 
-    async def test_a_ghe_repo_url_cannot_be_pinned(self):
+    async def test_a_ghe_repo_url_pins_its_host(self):
         self._allow_ghe_host()
         resp = await routes._handle_repos(_FakeRequest(  # type: ignore[arg-type]
             {"repo": "https://acme.ghe.com/o/r"}))
-        self.assertEqual(resp.status, 400)
-        self.assertIn("unsupported_repo_host", _text(resp))
+        self.assertEqual(resp.status, 200, resp.text)
+        self.assertEqual(discovery.read_repos()[0]["host"], "acme.ghe.com")
+
+    async def test_explicit_host_distinguishes_and_removes_only_that_pin(self):
+        self._allow_ghe_host()
+        await routes._handle_repos(_FakeRequest(  # type: ignore[arg-type]
+            {"owner": "o", "repo": "r"}))
+        added = await routes._handle_repos(_FakeRequest(  # type: ignore[arg-type]
+            {"host": "acme.ghe.com", "owner": "o", "repo": "r"}))
+        self.assertEqual(added.status, 200, added.text)
+        self.assertEqual(
+            [(row["host"], row["full_name"]) for row in discovery.read_repos()],
+            [("acme.ghe.com", "o/r"), ("github.com", "o/r")],
+        )
+
+        removed = await routes._handle_repos(_FakeRequest(  # type: ignore[arg-type]
+            {"host": "acme.ghe.com", "owner": "o", "repo": "r"},
+            method="DELETE",
+        ))
+        self.assertEqual(removed.status, 200, removed.text)
+        self.assertEqual(
+            [(row["host"], row["full_name"]) for row in discovery.read_repos()],
+            [("github.com", "o/r")],
+        )
 
     async def test_pull_request_ref_keeps_the_ghe_host(self):
         self._allow_ghe_host()

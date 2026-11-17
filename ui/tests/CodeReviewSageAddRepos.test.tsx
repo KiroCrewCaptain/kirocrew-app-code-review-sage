@@ -138,6 +138,43 @@ describe('AddReposModal', () => {
     await waitFor(() => expect(api.pinRepo).toHaveBeenCalledWith('acme', 'dormant'))
   })
 
+  it('pins and displays a discovered GHE repo with its host', async () => {
+    api.pinnedRepos.mockResolvedValue({ repos: [] })
+    api.recentRepos.mockResolvedValue({ repos: [], pinned: [], truncated: false })
+    api.myRepos.mockResolvedValue({
+      repos: [{
+        host: 'ghe.example.com',
+        owner: 'acme',
+        repo: 'dormant',
+        full_name: 'acme/dormant',
+        pushed_at: '',
+        private: false,
+        archived: false,
+        can_push: true,
+      }],
+      pinned: [],
+      truncated: false,
+    })
+    api.pinRepo.mockResolvedValue({ repos: [] })
+    api.repoPrs.mockResolvedValue({
+      repo: 'ghe.example.com/acme/dormant',
+      prs: [],
+      count: 0,
+    })
+    mount()
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: /^Add ghe\.example\.com\/acme\/dormant$/i,
+      }),
+    )
+    await waitFor(() => expect(api.pinRepo).toHaveBeenCalledWith(
+      'acme', 'dormant', 'ghe.example.com',
+    ))
+    await waitFor(() => expect(api.repoPrs).toHaveBeenCalledWith(
+      'https://ghe.example.com/acme/dormant',
+    ))
+  })
+
   it('accepts a manually typed owner/repo', async () => {
     api.pinRepoUrl.mockResolvedValue({ repos: [] })
     mount()
@@ -238,6 +275,27 @@ describe('managing repos you already have', () => {
     mount()
     await userEvent.click(await screen.findByRole('button', { name: /Remove acme\/widgets/ }))
     await waitFor(() => expect(api.unpinRepo).toHaveBeenCalledWith('acme', 'widgets'))
+  })
+
+  it('removes only the selected GHE pin', async () => {
+    api.pinnedRepos.mockResolvedValue({
+      repos: [{
+        host: 'ghe.example.com',
+        owner: 'acme',
+        repo: 'widgets',
+      }],
+    })
+    api.recentRepos.mockResolvedValue({ repos: [], pinned: [], gh_ready: true })
+    api.myRepos.mockResolvedValue({ repos: [], pinned: [], gh_ready: true })
+    mount()
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: /Remove ghe\.example\.com\/acme\/widgets/,
+      }),
+    )
+    await waitFor(() => expect(api.unpinRepo).toHaveBeenCalledWith(
+      'acme', 'widgets', 'ghe.example.com',
+    ))
   })
 })
 

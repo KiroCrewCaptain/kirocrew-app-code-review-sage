@@ -19,7 +19,8 @@
 // Both are best-effort: every read is guarded and every failure degrades to the
 // current behaviour (default state, loading skeleton). Persistence must never be
 // able to break the app — a corrupt or outdated value is discarded, not trusted.
-import type { ListTab, MainView, PrRef } from './types'
+import type { ListTab, MainView, PrRef, RepoIdentity } from './types'
+import { sameRepo } from './repoIdentity'
 
 const PREFIX = 'kc:code-review-sage'
 export const UI_STATE_KEY = `${PREFIX}:ui-state`
@@ -48,16 +49,20 @@ const MAX_RECENT = 5
  *
  * Separate from the pinned list, which is server-side and ordered by when each
  * repo was added — useless for finding the two or three you keep returning to. */
-export function loadRecentRepos(): { owner: string; repo: string }[] {
+export function loadRecentRepos(): RepoIdentity[] {
   try {
     const raw = localStorage.getItem(RECENT_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw)
     if (!parsed || parsed.v !== SCHEMA || !Array.isArray(parsed.repos)) return []
     return parsed.repos
-      .filter((r: unknown): r is { owner: string; repo: string } => (
+      .filter((r: unknown): r is RepoIdentity => (
         !!r && typeof (r as { owner?: unknown }).owner === 'string'
         && typeof (r as { repo?: unknown }).repo === 'string'
+        && (
+          (r as { host?: unknown }).host === undefined
+          || typeof (r as { host?: unknown }).host === 'string'
+        )
       ))
       .slice(0, MAX_RECENT)
   } catch {
@@ -67,12 +72,11 @@ export function loadRecentRepos(): { owner: string; repo: string }[] {
 
 /** Record a pick, moving it to the front. */
 export function rememberRecentRepo(
-  repo: { owner: string; repo: string },
-): { owner: string; repo: string }[] {
+  repo: RepoIdentity,
+): RepoIdentity[] {
   const next = [
-    { owner: repo.owner, repo: repo.repo },
-    ...loadRecentRepos().filter(
-      (r) => !(r.owner === repo.owner && r.repo === repo.repo)),
+    { ...repo },
+    ...loadRecentRepos().filter((saved) => !sameRepo(saved, repo)),
   ].slice(0, MAX_RECENT)
   try {
     localStorage.setItem(RECENT_KEY, JSON.stringify({ v: SCHEMA, repos: next }))
@@ -85,7 +89,7 @@ export function rememberRecentRepo(
 export interface PersistedUiState {
   mainView: MainView
   listTab: ListTab
-  activeRepo: { owner: string; repo: string } | null
+  activeRepo: RepoIdentity | null
   selectedRunId: string | null
   selectedPr: PrRef | null
   /** Which tab of the PR detail pane was open (Sage Review / Description / …). */

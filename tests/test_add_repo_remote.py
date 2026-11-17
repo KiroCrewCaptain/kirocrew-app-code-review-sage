@@ -55,7 +55,10 @@ class TestAddRepoFieldTakesARemote(unittest.IsolatedAsyncioTestCase):
             _FakeRequest({"repo": "git@github.com:octo-org/hello-world.git"})
         )
         self.assertEqual(resp.status, 200, resp.text)
-        self.assertEqual(_payload(resp)["added"], {"owner": "octo-org", "repo": "hello-world"})
+        self.assertEqual(
+            _payload(resp)["added"],
+            {"host": "github.com", "owner": "octo-org", "repo": "hello-world"},
+        )
         pinned = [f"{r['owner']}/{r['repo']}" for r in discovery.read_repos()]
         self.assertIn("octo-org/hello-world", pinned)
 

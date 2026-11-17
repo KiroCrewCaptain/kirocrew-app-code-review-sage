@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import { changeKey, runCoversChange } from '../src/lib/format'
+import { changeKey, repoOfRun, runCoversChange } from '../src/lib/format'
 
 /**
  * A PR must be matched to its run by URL, never by `change_id`.
@@ -77,5 +77,17 @@ describe('matching a PR to its run', () => {
     // It must NOT collapse punctuation — that is the lossiness being avoided.
     expect(changeKey('https://github.com/acme/service-api/pull/5'))
       .not.toBe(changeKey('https://github.com/acme/service_api/pull/5'))
+  })
+
+  it('keeps the GitHub host when deriving a run repo from its change URL', () => {
+    expect(repoOfRun({
+      changes: ['https://ghe.example.com/acme/widgets/pull/7'],
+    })).toBe('ghe.example.com/acme/widgets')
+    expect(repoOfRun({
+      changes: ['https://github.com/acme/widgets/pull/7'],
+    })).toBe('acme/widgets')
+    expect(repoOfRun({
+      changes: ['github.com/acme/widgets/pull/7'],
+    })).toBe('acme/widgets')
   })
 })

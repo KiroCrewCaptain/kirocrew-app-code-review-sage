@@ -20,6 +20,7 @@ import {
   coerceListTab, coerceMainView, loadUiState, readSnapshot, saveUiState,
   writeSnapshot,
 } from './lib/persist'
+import { repoKey, repoSlug, repoUrl, sameRepo } from './lib/repoIdentity'
 import type {
   ListTab,
   RepoPrsResponse,
@@ -31,6 +32,7 @@ import type {
   RecentReposResponse,
   PrRef,
   RepoPr,
+  RepoIdentity,
   ReviewerInfo,
   Run,
   RunReport,
@@ -38,18 +40,8 @@ import type {
 } from './lib/types'
 
 /** A repo the picker is currently showing PRs for. */
-export interface ActiveRepo {
-  owner: string
-  repo: string
-}
-
-export function repoUrl(r: ActiveRepo): string {
-  return `https://github.com/${r.owner}/${r.repo}`
-}
-
-export function repoSlug(r: ActiveRepo): string {
-  return `${r.owner}/${r.repo}`
-}
+export type ActiveRepo = RepoIdentity
+export { repoSlug, repoUrl }
 
 export interface SageContextValue {
   // --- Threads (runs) ---
@@ -133,9 +125,9 @@ export interface SageContextValue {
   mineLoading: boolean
   mineError: Error | null
   refreshMine: () => void
-  pinRepo: (owner: string, repo: string) => void
+  pinRepo: (owner: string, repo: string, host?: string) => void
   pinRepoUrl: (url: string) => void
-  unpinRepo: (owner: string, repo: string) => void
+  unpinRepo: (owner: string, repo: string, host?: string) => void
   pinError: Error | null
 
   activeRepo: ActiveRepo | null
@@ -238,7 +230,7 @@ export function SageProvider({ children, initialRunId }: {
   // regardless of which repo (if any) is in focus.
   const repoRuns = useMemo(() => {
     if (!activeRepo) return []
-    const want = repoSlug(activeRepo).toLowerCase()
+    const want = repoKey(activeRepo)
     return runs.filter((r) => repoOfRun(r) === want)
   }, [runs, activeRepo])
   // Keyed by change URL, not change_id: the id is the lossily-sanitized filename
@@ -486,7 +478,8 @@ export function SageProvider({ children, initialRunId }: {
   }, [qc])
 
   const pinMut = useMutation({
-    mutationFn: ({ owner, repo }: ActiveRepo) => sageApi.pinRepo(owner, repo),
+    mutationFn: ({ host, owner, repo }: ActiveRepo) =>
+      host ? sageApi.pinRepo(owner, repo, host) : sageApi.pinRepo(owner, repo),
     onSuccess: (_d, v) => { invalidateRepos(); setActiveRepo(v) },
   })
   const pinUrlMut = useMutation({
@@ -494,7 +487,13 @@ export function SageProvider({ children, initialRunId }: {
     onSuccess: (d) => {
       invalidateRepos()
       const added = d.added ?? d.repos?.[0]
-      if (added) setActiveRepo({ owner: added.owner, repo: added.repo })
+      if (added) {
+        setActiveRepo({
+          host: added.host,
+          owner: added.owner,
+          repo: added.repo,
+        })
+      }
       // A pasted PULL REQUEST link means the user wants that pull request, not a
       // repo they now have to find it in — so open it.
       if (d.pull_request) {
@@ -510,11 +509,12 @@ export function SageProvider({ children, initialRunId }: {
     },
   })
   const unpinMut = useMutation({
-    mutationFn: ({ owner, repo }: ActiveRepo) => sageApi.unpinRepo(owner, repo),
+    mutationFn: ({ host, owner, repo }: ActiveRepo) =>
+      host ? sageApi.unpinRepo(owner, repo, host) : sageApi.unpinRepo(owner, repo),
     onSuccess: (_d, v) => {
       invalidateRepos()
       setActiveRepo((cur) =>
-        cur && cur.owner === v.owner && cur.repo === v.repo ? null : cur)
+        cur && sameRepo(cur, v) ? null : cur)
     },
   })
 
@@ -547,7 +547,7 @@ export function SageProvider({ children, initialRunId }: {
   useEffect(() => {
     const list = pinnedQuery.data?.repos
     if (!activeRepo || !list) return
-    const known = list.some((r) => r.owner === activeRepo.owner && r.repo === activeRepo.repo)
+    const known = list.some((repo) => sameRepo(repo, activeRepo))
     if (!known) setActiveRepo(null)
   }, [pinnedQuery.data, activeRepo])
 
@@ -570,7 +570,7 @@ export function SageProvider({ children, initialRunId }: {
     saveUiState({
       mainView,
       listTab,
-      activeRepo: activeRepo ? { owner: activeRepo.owner, repo: activeRepo.repo } : null,
+      activeRepo: activeRepo ? { ...activeRepo } : null,
       selectedRunId,
       selectedPr,
       detailTab: null,
@@ -644,9 +644,11 @@ export function SageProvider({ children, initialRunId }: {
       void mineQuery.refetch()
       void recentQuery.refetch()
     },
-    pinRepo: (owner: string, repo: string) => pinMut.mutate({ owner, repo }),
+    pinRepo: (owner: string, repo: string, host?: string) =>
+      pinMut.mutate({ host, owner, repo }),
     pinRepoUrl: (url: string) => pinUrlMut.mutate(url),
-    unpinRepo: (owner: string, repo: string) => unpinMut.mutate({ owner, repo }),
+    unpinRepo: (owner: string, repo: string, host?: string) =>
+      unpinMut.mutate({ host, owner, repo }),
     pinError: ((pinMut.error ?? pinUrlMut.error ?? unpinMut.error) as Error) ?? null,
 
     activeRepo,
