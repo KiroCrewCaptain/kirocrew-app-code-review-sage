@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
 
-from . import _host, store
+from . import _host, adapters, store
 from .store import redact_text as pipeline_redact
 
 # The gateway's gh runner (trusted-binary resolution, audit, scrubbed env). Looked
@@ -69,6 +69,7 @@ _CONTRIB_EVENT_TYPES = {
 # Serializes the read-modify-write of repos.json so two concurrent adds can't
 # clobber each other (the write itself is atomic; this guards read+merge).
 _REPOS_LOCK = threading.Lock()
+_PUBLIC_GITHUB_HOST = "github.com"
 
 
 class GhError(RuntimeError):
@@ -105,6 +106,17 @@ def gh_bin() -> str:
         return github_runner.resolve_gh(override_env=_GH_OVERRIDE_ENV)
     except github_runner.SetupError as exc:
         raise GhSetupError(str(exc)) from exc
+
+
+def default_gh_host() -> str:
+    """The host targeted by ``gh api`` calls that omit ``--hostname``.
+
+    GitHub CLI defaults those calls to github.com unless ``GH_HOST`` selects a
+    different authenticated instance. Discovery rows carry that host so pinning
+    one later does not lose which API produced it.
+    """
+    host = str(gh_env().get("GH_HOST") or _PUBLIC_GITHUB_HOST)
+    return adapters.canonical_host(host)
 
 
 def _run_gh(argv: list[str], *, timeout: float) -> subprocess.CompletedProcess:
@@ -231,6 +243,7 @@ def list_user_repos(*, limit: int = _REPO_PAGE_SIZE,
     )
     rows = run_gh_json(path, _REPO_JQ, timeout=timeout, paginate=False)
     truncated = len(rows) >= n
+    host = default_gh_host()
     out: list[dict] = []
     for r in rows:
         owner = r.get("owner")
@@ -238,6 +251,7 @@ def list_user_repos(*, limit: int = _REPO_PAGE_SIZE,
         if not isinstance(owner, str) or not isinstance(repo, str) or not owner or not repo:
             continue
         out.append({
+            "host": host,
             "owner": owner,
             "repo": repo,
             "full_name": r.get("full_name") or f"{owner}/{repo}",
@@ -276,6 +290,7 @@ def list_contributed_repos(login: str, *, within_days: int = CONTRIB_WINDOW_DAYS
 
     days = max(0, min(int(within_days), MAX_WINDOW_DAYS))
     cutoff = datetime.now(timezone.utc) - timedelta(days=days) if days else None
+    host = default_gh_host()
 
     by_repo: dict[str, dict] = {}
     for ev in events:
@@ -291,7 +306,7 @@ def list_contributed_repos(login: str, *, within_days: int = CONTRIB_WINDOW_DAYS
         if row is None:
             owner, _, repo = full_name.partition("/")
             by_repo[full_name] = {
-                "owner": owner, "repo": repo, "full_name": full_name,
+                "host": host, "owner": owner, "repo": repo, "full_name": full_name,
                 "last_contributed_at": ev.get("created_at") or "",
                 "contribution_count": 1, "_when": when,
             }
@@ -383,14 +398,26 @@ def read_repos(root: Path | None = None) -> list[dict]:
     repos = data.get("repos")
     if not isinstance(repos, list):
         return []
-    # `owner`/`repo` must be non-empty STRINGS, not merely truthy: a worker owns
-    # this file, and a planted dict or list is truthy, survives redaction (which
-    # walks strings), and reaches the client as an object React cannot render --
-    # taking the page down rather than showing one bad row.
-    return [_redact_repo(r) for r in repos
-            if isinstance(r, dict)
-            and isinstance(r.get("owner"), str) and r["owner"]
-            and isinstance(r.get("repo"), str) and r["repo"]]
+    out: list[dict] = []
+    for row in repos:
+        if (
+            not isinstance(row, dict)
+            or not isinstance(row.get("owner"), str)
+            or not row["owner"]
+            or not isinstance(row.get("repo"), str)
+            or not row["repo"]
+        ):
+            continue
+        raw_host = row.get("host", _PUBLIC_GITHUB_HOST)
+        if not isinstance(raw_host, str) or not raw_host.strip():
+            continue
+        normalized = {
+            **row,
+            "host": adapters.canonical_host(raw_host),
+            "full_name": f"{row['owner']}/{row['repo']}",
+        }
+        out.append(_redact_repo(normalized))
+    return out
 
 
 def _redact_repo(row: dict) -> dict:
@@ -422,27 +449,59 @@ def _write_repos(repos: list[dict], root: Path | None = None) -> Path:
     return path
 
 
-def _same(a: dict, b_owner: str, b_repo: str) -> bool:
-    """Repo identity is case-insensitive on GitHub, so compare that way."""
-    return (str(a.get("owner", "")).lower() == b_owner.lower()
-            and str(a.get("repo", "")).lower() == b_repo.lower())
+def repo_identity(owner: object, repo: object, host: object = _PUBLIC_GITHUB_HOST) -> str:
+    """A case-insensitive, host-qualified key for one GitHub repository."""
+    canonical = adapters.canonical_host(str(host or _PUBLIC_GITHUB_HOST))
+    return f"{canonical}/{owner}/{repo}".lower()
 
 
-def add_repo(owner: str, repo: str, root: Path | None = None) -> list[dict]:
+def _same(a: dict, b_owner: str, b_repo: str, b_host: str) -> bool:
+    """Repository identity is case-insensitive and includes its GitHub host."""
+    return repo_identity(a.get("owner"), a.get("repo"), a.get("host")) == repo_identity(
+        b_owner, b_repo, b_host
+    )
+
+
+def add_repo(
+    owner: str,
+    repo: str,
+    root: Path | None = None,
+    *,
+    host: str = _PUBLIC_GITHUB_HOST,
+) -> list[dict]:
     """Pin a repo (idempotent, most-recent first). Returns the new list."""
+    canonical_host = adapters.canonical_host(host or _PUBLIC_GITHUB_HOST)
     with _REPOS_LOCK:
-        repos = [r for r in read_repos(root) if not _same(r, owner, repo)]
+        repos = [
+            row
+            for row in read_repos(root)
+            if not _same(row, owner, repo, canonical_host)
+        ]
         repos.insert(0, {
-            "owner": owner, "repo": repo, "full_name": f"{owner}/{repo}",
+            "host": canonical_host,
+            "owner": owner,
+            "repo": repo,
+            "full_name": f"{owner}/{repo}",
             "added_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         })
         _write_repos(repos, root)
         return repos
 
 
-def remove_repo(owner: str, repo: str, root: Path | None = None) -> list[dict]:
+def remove_repo(
+    owner: str,
+    repo: str,
+    root: Path | None = None,
+    *,
+    host: str = _PUBLIC_GITHUB_HOST,
+) -> list[dict]:
     """Unpin a repo. Returns the new list."""
+    canonical_host = adapters.canonical_host(host or _PUBLIC_GITHUB_HOST)
     with _REPOS_LOCK:
-        repos = [r for r in read_repos(root) if not _same(r, owner, repo)]
+        repos = [
+            row
+            for row in read_repos(root)
+            if not _same(row, owner, repo, canonical_host)
+        ]
         _write_repos(repos, root)
         return repos

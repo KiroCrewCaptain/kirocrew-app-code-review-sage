@@ -146,12 +146,14 @@ var sageApi = {
 	* you own but haven't pushed to lately. */
 	myRepos: () => getJSON("/my-repos"),
 	pinnedRepos: () => getJSON("/repos"),
-	pinRepo: (owner, repo) => sendJSON("/repos", "POST", {
+	pinRepo: (owner, repo, host) => sendJSON("/repos", "POST", {
+		...host ? { host } : {},
 		owner,
 		repo
 	}),
 	pinRepoUrl: (url) => sendJSON("/repos", "POST", { repo: url }),
-	unpinRepo: (owner, repo) => sendJSON("/repos", "DELETE", {
+	unpinRepo: (owner, repo, host) => sendJSON("/repos", "DELETE", {
+		...host ? { host } : {},
 		owner,
 		repo
 	}),
@@ -943,6 +945,26 @@ function EmptyState({ icon: Icon, title, hint, children }) {
 		]
 	});
 }
+// src/lib/repoIdentity.ts
+var PUBLIC_GITHUB_HOST = "github.com";
+function repoHost(repo) {
+	const host = String(repo.host || PUBLIC_GITHUB_HOST).trim().toLowerCase();
+	return host === "www.github.com" ? PUBLIC_GITHUB_HOST : host;
+}
+function repoSlug(repo) {
+	const path = `${repo.owner}/${repo.repo}`;
+	const host = repoHost(repo);
+	return host === PUBLIC_GITHUB_HOST ? path : `${host}/${path}`;
+}
+function repoKey(repo) {
+	return repoSlug(repo).toLowerCase();
+}
+function repoUrl(repo) {
+	return `https://${repoHost(repo)}/${repo.owner}/${repo.repo}`;
+}
+function sameRepo(left, right) {
+	return repoKey(left) === repoKey(right);
+}
 // src/lib/format.ts
 /** Compact "just now / 5m ago / 3h ago / 2d ago" from an ISO timestamp. Returns
 * '' for a falsy / unparseable input (e.g. a run that has no finished_at yet).
@@ -1050,8 +1072,18 @@ function repoOfRun(run) {
 	if (run.repo && run.repo.includes("/")) return run.repo.toLowerCase();
 	const first = run.changes?.[0];
 	if (!first) return null;
-	const m = /(?:github\.com|gitlab\.com)\/([^/\s]+)\/([^/\s]+)/i.exec(first);
-	return m ? `${m[1]}/${m[2]}`.toLowerCase() : null;
+	try {
+		const parsed = new URL(first);
+		const [owner, repo] = parsed.pathname.split("/").filter(Boolean);
+		return owner && repo ? repoKey({
+			host: parsed.hostname,
+			owner,
+			repo
+		}) : null;
+	} catch {
+		const match = /(?:github\.com|gitlab\.com)\/([^/\s]+)\/([^/\s]+)/i.exec(first);
+		return match ? `${match[1]}/${match[2]}`.toLowerCase() : null;
+	}
 }
 /** The lossless identity of a change, for matching a PR against a run.
 *
@@ -1276,17 +1308,14 @@ function loadRecentRepos() {
 		if (!raw) return [];
 		const parsed = JSON.parse(raw);
 		if (!parsed || parsed.v !== SCHEMA || !Array.isArray(parsed.repos)) return [];
-		return parsed.repos.filter((r) => !!r && typeof r.owner === "string" && typeof r.repo === "string").slice(0, MAX_RECENT);
+		return parsed.repos.filter((r) => !!r && typeof r.owner === "string" && typeof r.repo === "string" && (r.host === void 0 || typeof r.host === "string")).slice(0, MAX_RECENT);
 	} catch {
 		return [];
 	}
 }
 /** Record a pick, moving it to the front. */
 function rememberRecentRepo(repo) {
-	const next = [{
-		owner: repo.owner,
-		repo: repo.repo
-	}, ...loadRecentRepos().filter((r) => !(r.owner === repo.owner && r.repo === repo.repo))].slice(0, MAX_RECENT);
+	const next = [{ ...repo }, ...loadRecentRepos().filter((saved) => !sameRepo(saved, repo))].slice(0, MAX_RECENT);
 	try {
 		localStorage.setItem(RECENT_KEY, JSON.stringify({
 			v: SCHEMA,
@@ -1365,12 +1394,6 @@ function writeSnapshot(key, data) {
 	} catch {}
 }
 // src/context.tsx
-function repoUrl(r) {
-	return `https://github.com/${r.owner}/${r.repo}`;
-}
-function repoSlug(r) {
-	return `${r.owner}/${r.repo}`;
-}
 var Ctx = createContext(null);
 function useSage() {
 	const v = useContext(Ctx);
@@ -1404,7 +1427,7 @@ function SageProvider({ children, initialRunId }) {
 	const anyRunning = runs.some((r) => r.status === "running");
 	const repoRuns = useMemo(() => {
 		if (!activeRepo) return [];
-		const want = repoSlug(activeRepo).toLowerCase();
+		const want = repoKey(activeRepo);
 		return runs.filter((r) => repoOfRun(r) === want);
 	}, [runs, activeRepo]);
 	const reviewingChangeUrls = useMemo(() => {
@@ -1566,7 +1589,7 @@ function SageProvider({ children, initialRunId }) {
 		qc.invalidateQueries({ queryKey: ["code-review-sage", "my-repos"] });
 	}, [qc]);
 	const pinMut = useMutation({
-		mutationFn: ({ owner, repo }) => sageApi.pinRepo(owner, repo),
+		mutationFn: ({ host, owner, repo }) => host ? sageApi.pinRepo(owner, repo, host) : sageApi.pinRepo(owner, repo),
 		onSuccess: (_d, v) => {
 			invalidateRepos();
 			setActiveRepo(v);
@@ -1578,6 +1601,7 @@ function SageProvider({ children, initialRunId }) {
 			invalidateRepos();
 			const added = d.added ?? d.repos?.[0];
 			if (added) setActiveRepo({
+				host: added.host,
 				owner: added.owner,
 				repo: added.repo
 			});
@@ -1594,10 +1618,10 @@ function SageProvider({ children, initialRunId }) {
 		}
 	});
 	const unpinMut = useMutation({
-		mutationFn: ({ owner, repo }) => sageApi.unpinRepo(owner, repo),
+		mutationFn: ({ host, owner, repo }) => host ? sageApi.unpinRepo(owner, repo, host) : sageApi.unpinRepo(owner, repo),
 		onSuccess: (_d, v) => {
 			invalidateRepos();
-			setActiveRepo((cur) => cur && cur.owner === v.owner && cur.repo === v.repo ? null : cur);
+			setActiveRepo((cur) => cur && sameRepo(cur, v) ? null : cur);
 		}
 	});
 	const prsKey = activeRepo ? `prs:${repoSlug(activeRepo).toLowerCase()}` : "";
@@ -1624,7 +1648,7 @@ function SageProvider({ children, initialRunId }) {
 	useEffect(() => {
 		const list = pinnedQuery.data?.repos;
 		if (!activeRepo || !list) return;
-		if (!list.some((r) => r.owner === activeRepo.owner && r.repo === activeRepo.repo)) setActiveRepo(null);
+		if (!list.some((repo) => sameRepo(repo, activeRepo))) setActiveRepo(null);
 	}, [pinnedQuery.data, activeRepo]);
 	useEffect(() => {
 		if (!selectedRunId || !runsQuery.isSuccess || runsQuery.isFetching) return;
@@ -1642,10 +1666,7 @@ function SageProvider({ children, initialRunId }) {
 		saveUiState({
 			mainView,
 			listTab,
-			activeRepo: activeRepo ? {
-				owner: activeRepo.owner,
-				repo: activeRepo.repo
-			} : null,
+			activeRepo: activeRepo ? { ...activeRepo } : null,
 			selectedRunId,
 			selectedPr,
 			detailTab: null
@@ -1718,12 +1739,14 @@ function SageProvider({ children, initialRunId }) {
 			mineQuery.refetch();
 			recentQuery.refetch();
 		},
-		pinRepo: (owner, repo) => pinMut.mutate({
+		pinRepo: (owner, repo, host) => pinMut.mutate({
+			host,
 			owner,
 			repo
 		}),
 		pinRepoUrl: (url) => pinUrlMut.mutate(url),
-		unpinRepo: (owner, repo) => unpinMut.mutate({
+		unpinRepo: (owner, repo, host) => unpinMut.mutate({
+			host,
 			owner,
 			repo
 		}),
@@ -1975,13 +1998,13 @@ function AddReposModal({ onClose }) {
 	const dialogRef = useRef(null);
 	const requestClose = useCallback(() => onClose(), [onClose]);
 	useDialogFocusTrap(dialogRef, requestClose);
-	const pinnedKeys = useMemo(() => new Set(pinnedRepos.map((r) => `${r.owner}/${r.repo}`.toLowerCase())), [pinnedRepos]);
-	const isPinned = (fullName) => pinnedKeys.has(fullName.toLowerCase());
+	const pinnedKeys = useMemo(() => new Set(pinnedRepos.map(repoKey)), [pinnedRepos]);
+	const isPinned = (repo) => pinnedKeys.has(repoKey(repo));
 	const q = query.trim().toLowerCase();
-	const match = (fullName) => !q || fullName.toLowerCase().includes(q);
-	const recentRows = (recent?.repos ?? []).filter((r) => match(r.full_name));
-	const recentKeys = new Set((recent?.repos ?? []).map((r) => r.full_name.toLowerCase()));
-	const mineRows = (mine?.repos ?? []).filter((r) => match(r.full_name) && !recentKeys.has(r.full_name.toLowerCase()));
+	const match = (repo) => !q || repoKey(repo).includes(q);
+	const recentRows = (recent?.repos ?? []).filter(match);
+	const recentKeys = new Set((recent?.repos ?? []).map(repoKey));
+	const mineRows = (mine?.repos ?? []).filter((repo) => match(repo) && !recentKeys.has(repoKey(repo)));
 	const setupRequired = recent?.setup_required || mine?.setup_required;
 	const loading = recentLoading || mineLoading;
 	const err = recentError ?? mineError ?? pinError;
@@ -2113,6 +2136,7 @@ function AddReposModal({ onClose }) {
 								children: [/* @__PURE__ */ jsxs("span", {
 									className: "flex-1 min-w-0 truncate text-[13px] text-text",
 									children: [
+										repoHost(r) === "github.com" ? "" : `${repoHost(r)}/`,
 										r.owner,
 										"/",
 										/* @__PURE__ */ jsx("span", {
@@ -2122,15 +2146,15 @@ function AddReposModal({ onClose }) {
 									]
 								}), /* @__PURE__ */ jsxs("button", {
 									type: "button",
-									onClick: () => unpinRepo(r.owner, r.repo),
-									"aria-label": i18nT("apps.codeReviewSage.components.addReposModal.remove_repo", { repo: `${r.owner}/${r.repo}` }),
+									onClick: () => unpinRepo(r.owner, r.repo, r.host),
+									"aria-label": i18nT("apps.codeReviewSage.components.addReposModal.remove_repo", { repo: repoSlug(r) }),
 									className: "flex-shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 py-1 bg-transparent text-[12px] text-muted hover:text-danger cursor-pointer",
 									children: [/* @__PURE__ */ jsx(Trash2, {
 										size: 12,
 										"aria-hidden": "true"
 									}), i18nT("apps.codeReviewSage.components.addReposModal.remove")]
 								})]
-							}, `${r.owner}/${r.repo}`))
+							}, repoKey(r)))
 						})] }),
 						!loading && !setupRequired && /* @__PURE__ */ jsxs(Fragment, { children: [
 							recentRows.length > 0 && /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsx(SectionHead, {
@@ -2139,14 +2163,14 @@ function AddReposModal({ onClose }) {
 							}), /* @__PURE__ */ jsx("ul", {
 								className: "flex flex-col gap-1.5 list-none p-0 m-0",
 								children: recentRows.map((r) => /* @__PURE__ */ jsx(RepoRow, {
-									fullName: r.full_name,
+									fullName: repoSlug(r),
 									meta: i18nT("apps.codeReviewSage.components.addReposModal.contributed_events", {
 										age: relativeAge(r.last_contributed_at),
 										count: r.contribution_count
 									}),
-									pinned: isPinned(r.full_name),
-									onPin: () => pinRepo(r.owner, r.repo)
-								}, r.full_name))
+									pinned: isPinned(r),
+									onPin: () => pinRepo(r.owner, r.repo, r.host)
+								}, repoKey(r)))
 							})] }),
 							mineRows.length > 0 && /* @__PURE__ */ jsxs(Fragment, { children: [/* @__PURE__ */ jsx(SectionHead, {
 								title: i18nT("apps.codeReviewSage.components.addReposModal.all_your_repos"),
@@ -2154,10 +2178,10 @@ function AddReposModal({ onClose }) {
 							}), /* @__PURE__ */ jsx("ul", {
 								className: "flex flex-col gap-1.5 list-none p-0 m-0",
 								children: mineRows.map((r) => /* @__PURE__ */ jsx(RepoRow, {
-									fullName: r.full_name,
+									fullName: repoSlug(r),
 									meta: r.pushed_at ? i18nT("apps.codeReviewSage.components.addReposModal.pushed_age", { age: relativeAge(r.pushed_at) }) : void 0,
-									pinned: isPinned(r.full_name),
-									onPin: () => pinRepo(r.owner, r.repo),
+									pinned: isPinned(r),
+									onPin: () => pinRepo(r.owner, r.repo, r.host),
 									badges: /* @__PURE__ */ jsxs("span", {
 										className: "flex-shrink-0 inline-flex items-center gap-1.5",
 										children: [
@@ -2183,7 +2207,7 @@ function AddReposModal({ onClose }) {
 											})
 										]
 									})
-								}, r.full_name))
+								}, repoKey(r)))
 							})] }),
 							recentRows.length === 0 && mineRows.length === 0 && /* @__PURE__ */ jsx(EmptyState, {
 								icon: Star,
@@ -3646,11 +3670,11 @@ function RepoSwitcher() {
 	const filtered = useMemo(() => {
 		const q = query.trim().toLowerCase();
 		if (!q) return pinnedRepos;
-		return pinnedRepos.filter((r) => `${r.owner}/${r.repo}`.toLowerCase().includes(q));
+		return pinnedRepos.filter((repo) => repoKey(repo).includes(q));
 	}, [pinnedRepos, query]);
 	const recentRows = useMemo(() => {
 		if (query.trim()) return [];
-		return recent.filter((r) => pinnedRepos.some((p) => p.owner === r.owner && p.repo === r.repo));
+		return recent.filter((repo) => pinnedRepos.some((pinned) => sameRepo(pinned, repo)));
 	}, [
 		recent,
 		pinnedRepos,
@@ -3658,7 +3682,7 @@ function RepoSwitcher() {
 	]);
 	const rest = useMemo(() => {
 		if (recentRows.length < 2) return filtered;
-		return filtered.filter((r) => !recentRows.some((x) => x.owner === r.owner && x.repo === r.repo));
+		return filtered.filter((repo) => !recentRows.some((recentRepo) => sameRepo(recentRepo, repo)));
 	}, [filtered, recentRows]);
 	const pick = (r) => {
 		setRecent(rememberRecentRepo(r));
@@ -3729,12 +3753,10 @@ function RepoSwitcher() {
 				}),
 				recentRows.length >= 2 && /* @__PURE__ */ jsxs(Fragment, { children: [
 					recentRows.map((r) => {
-						const isActive = !!activeRepo && activeRepo.owner === r.owner && activeRepo.repo === r.repo;
+						const isActive = !!activeRepo && sameRepo(activeRepo, r);
+						const slug = repoSlug(r);
 						return /* @__PURE__ */ jsxs(DropdownMenuItem, {
-							onSelect: () => pick({
-								owner: r.owner,
-								repo: r.repo
-							}),
+							onSelect: () => pick(r),
 							children: [
 								/* @__PURE__ */ jsx(Clock, {
 									size: 12,
@@ -3743,8 +3765,9 @@ function RepoSwitcher() {
 								}),
 								/* @__PURE__ */ jsxs("span", {
 									className: "flex-1 min-w-0 truncate",
-									title: `${r.owner}/${r.repo}`,
+									title: slug,
 									children: [
+										repoHost(r) === "github.com" ? "" : `${repoHost(r)}/`,
 										r.owner,
 										"/",
 										/* @__PURE__ */ jsx("span", {
@@ -3758,7 +3781,7 @@ function RepoSwitcher() {
 									className: "text-accent flex-shrink-0"
 								})
 							]
-						}, `recent-${r.owner}/${r.repo}`);
+						}, `recent-${repoKey(r)}`);
 					}),
 					/* @__PURE__ */ jsx(DropdownMenuSeparator, {}),
 					/* @__PURE__ */ jsx(DropdownMenuLabel, {
@@ -3767,12 +3790,10 @@ function RepoSwitcher() {
 					})
 				] }),
 				rest.map((r) => {
-					const isActive = !!activeRepo && activeRepo.owner === r.owner && activeRepo.repo === r.repo;
+					const isActive = !!activeRepo && sameRepo(activeRepo, r);
+					const slug = repoSlug(r);
 					return /* @__PURE__ */ jsxs(DropdownMenuItem, {
-						onSelect: () => pick({
-							owner: r.owner,
-							repo: r.repo
-						}),
+						onSelect: () => pick(r),
 						children: [
 							/* @__PURE__ */ jsx(GithubLogo, {
 								size: 13,
@@ -3780,8 +3801,9 @@ function RepoSwitcher() {
 							}),
 							/* @__PURE__ */ jsxs("span", {
 								className: "flex-1 min-w-0 truncate",
-								title: `${r.owner}/${r.repo}`,
+								title: slug,
 								children: [
+									repoHost(r) === "github.com" ? "" : `${repoHost(r)}/`,
 									r.owner,
 									"/",
 									/* @__PURE__ */ jsx("span", {
@@ -3795,7 +3817,7 @@ function RepoSwitcher() {
 								className: "text-accent flex-shrink-0"
 							})
 						]
-					}, `${r.owner}/${r.repo}`);
+					}, repoKey(r));
 				}),
 				/* @__PURE__ */ jsx(DropdownMenuSeparator, {}),
 				/* @__PURE__ */ jsxs(DropdownMenuItem, {

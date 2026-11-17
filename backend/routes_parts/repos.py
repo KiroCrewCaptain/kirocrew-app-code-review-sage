@@ -55,7 +55,10 @@ async def _handle_recent_repos(request: web.Request) -> web.Response:
 
     def _load() -> dict:
         pinned = discovery.read_repos()
-        pinned_keys = {f"{r['owner']}/{r['repo']}".lower() for r in pinned}
+        pinned_keys = {
+            discovery.repo_identity(r["owner"], r["repo"], r.get("host"))
+            for r in pinned
+        }
         try:
             login = discovery.current_login()
         except discovery.GhSetupError as exc:
@@ -64,7 +67,10 @@ async def _handle_recent_repos(request: web.Request) -> web.Response:
             return {"repos": [], "pinned": pinned, "login": None}
         rows, truncated = discovery.list_contributed_repos(login, within_days=days)
         for row in rows:
-            row["pinned"] = row["full_name"].lower() in pinned_keys
+            row["pinned"] = (
+                discovery.repo_identity(row["owner"], row["repo"], row.get("host"))
+                in pinned_keys
+            )
         return {"repos": rows, "pinned": pinned, "login": login, "truncated": truncated}
 
     try:
@@ -89,13 +95,19 @@ async def _handle_my_repos(request: web.Request) -> web.Response:
 
     def _load() -> dict:
         pinned = discovery.read_repos()
-        pinned_keys = {f"{r['owner']}/{r['repo']}".lower() for r in pinned}
+        pinned_keys = {
+            discovery.repo_identity(r["owner"], r["repo"], r.get("host"))
+            for r in pinned
+        }
         try:
             rows, truncated = discovery.list_user_repos()
         except discovery.GhSetupError as exc:
             return {"repos": [], "pinned": pinned, "setup_required": True, "error": str(exc)}
         for row in rows:
-            row["pinned"] = row["full_name"].lower() in pinned_keys
+            row["pinned"] = (
+                discovery.repo_identity(row["owner"], row["repo"], row.get("host"))
+                in pinned_keys
+            )
         return {"repos": rows, "pinned": pinned, "truncated": truncated}
 
     try:
@@ -154,8 +166,9 @@ def _pull_request_ref(link: str) -> dict | None:
 async def _handle_repos(request: web.Request) -> web.Response:
     """GET/POST/DELETE .../repos — the pinned-repo list the sidebar renders.
 
-    POST/DELETE body: ``{"owner": "...", "repo": "..."}`` or ``{"repo": "<url>"}``
-    (a repo URL, parsed by the same validator the review path uses)."""
+    POST/DELETE body: ``{"host": "...", "owner": "...", "repo": "..."}`` or
+    ``{"repo": "<url>"}`` (a repo URL, parsed by the same validator the review
+    path uses). ``host`` defaults to github.com for older clients."""
     if request.method == "GET":
         repos = await asyncio.to_thread(discovery.read_repos)
         return web.json_response({"repos": repos})
@@ -170,13 +183,16 @@ async def _handle_repos(request: web.Request) -> web.Response:
         body = {}
     owner = str(body.get("owner") or "").strip()
     name = str(body.get("repo") or "").strip()
+    repo_host = str(body.get("host") or "github.com").strip()
     pr: dict | None = None
     if owner and name:
         # An owner/repo pair supplied directly still has to satisfy the same
         # character allowlist as a parsed URL — this value becomes a path segment
         # in a `gh api` call and (via full_name) a stored identifier.
         try:
-            owner, name = adapters.parse_repo_url(f"https://github.com/{owner}/{name}")
+            repo_host, owner, name = adapters.parse_repo_ref(
+                f"https://{repo_host}/{owner}/{name}"
+            )
         except (adapters.AdapterParseError, adapters.UnsupportedPlatform, ValueError) as e:
             return web.json_response(
                 {"code": "invalid_repo", "error": f"invalid repo: {e}"}, status=400
@@ -189,20 +205,7 @@ async def _handle_repos(request: web.Request) -> web.Response:
         # Pin the PR's repo and report the PR back so the caller can open it.
         pr = _pull_request_ref(name)
         if pr is not None:
-            # The pinned-repo store carries no host and is enumerated against the
-            # gh default host, so pinning a GitHub Enterprise repo would silently
-            # target the wrong instance later. GHE PRs review fine when pasted in
-            # the PR box; refuse the pin with that pointer instead.
-            if pr.get("host") != "github.com":
-                return web.json_response(
-                    {
-                        "code": "unsupported_repo_host",
-                        "error": "GitHub Enterprise repos can't be pinned; paste the "
-                        "PR link in the review box instead",
-                    },
-                    status=400,
-                )
-            owner, name = pr["owner"], pr["repo"]
+            repo_host, owner, name = pr["host"], pr["owner"], pr["repo"]
         else:
             try:
                 # Off the loop: a refused host can read config.json for the wording.
@@ -211,15 +214,6 @@ async def _handle_repos(request: web.Request) -> web.Response:
                 return web.json_response(
                     {"code": "invalid_repo_url", "error": f"invalid repo url: {e}"}, status=400
                 )
-            if repo_host != "github.com":
-                return web.json_response(
-                    {
-                        "code": "unsupported_repo_host",
-                        "error": "GitHub Enterprise repos can't be pinned; paste the "
-                        "PR link in the review box instead",
-                    },
-                    status=400,
-                )
     else:
         return web.json_response(
             {"code": "repo_required", "error": "missing 'owner'+'repo' or a repo url in 'repo'"},
@@ -227,14 +221,18 @@ async def _handle_repos(request: web.Request) -> web.Response:
         )
 
     if request.method == "POST":
-        repos = await asyncio.to_thread(discovery.add_repo, owner, name)
+        repos = await asyncio.to_thread(
+            discovery.add_repo, owner, name, host=repo_host
+        )
     else:
-        repos = await asyncio.to_thread(discovery.remove_repo, owner, name)
+        repos = await asyncio.to_thread(
+            discovery.remove_repo, owner, name, host=repo_host
+        )
     out: dict[str, Any] = {"ok": True, "repos": repos}
     if request.method == "POST":
         # Name the added repo explicitly: repos[0] is only it if the store
         # happens to prepend.
-        out["added"] = {"owner": owner, "repo": name}
+        out["added"] = {"host": repo_host, "owner": owner, "repo": name}
     if request.method == "POST" and pr is not None:
         # The caller uses this to open the pasted pull request instead of leaving
         # the user to find it in the list.

@@ -194,7 +194,9 @@ If every review fails, check that an ordinary chat works.
 
 **My repository is on GitHub Enterprise.**
 Add the host to `github_hosts` in the app's `config.json` (see
-[Development](#development)) and sign `gh` in for that host.
+[Development](#development)) and sign `gh` in for that host. You can then pin
+the repository by URL and use it from the repository switcher like a `github.com`
+repository.
 
 **My repository is on GitLab.**
 Code Review Sage reviews GitHub pull requests only. A repository on gitlab.com,

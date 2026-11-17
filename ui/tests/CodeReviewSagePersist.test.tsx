@@ -273,6 +273,19 @@ describe('most recently picked repos', () => {
     expect(loadRecentRepos()).toEqual([{ owner: 'acme', repo: 'widgets' }])
   })
 
+  it('keeps the same slug on two GitHub hosts distinct', () => {
+    rememberRecentRepo({ owner: 'acme', repo: 'widgets' })
+    rememberRecentRepo({
+      host: 'ghe.example.com',
+      owner: 'acme',
+      repo: 'widgets',
+    })
+    expect(loadRecentRepos()).toEqual([
+      { host: 'ghe.example.com', owner: 'acme', repo: 'widgets' },
+      { owner: 'acme', repo: 'widgets' },
+    ])
+  })
+
   it('moves a repicked repo back to the front', () => {
     rememberRecentRepo({ owner: 'a', repo: 'one' })
     rememberRecentRepo({ owner: 'b', repo: 'two' })

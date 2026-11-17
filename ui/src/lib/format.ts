@@ -7,6 +7,7 @@
 import { i18nT } from '../i18n'
 import type { PullRequestLink } from '../host/types'
 import type { RunStatus, PrRef, ChangePhase } from './types'
+import { repoKey } from './repoIdentity'
 
 /** Compact "just now / 5m ago / 3h ago / 2d ago" from an ISO timestamp. Returns
  * '' for a falsy / unparseable input (e.g. a run that has no finished_at yet).
@@ -121,8 +122,16 @@ export function repoOfRun(run: { repo?: string; changes: string[] }): string | n
   if (run.repo && run.repo.includes('/')) return run.repo.toLowerCase()
   const first = run.changes?.[0]
   if (!first) return null
-  const m = /(?:github\.com|gitlab\.com)\/([^/\s]+)\/([^/\s]+)/i.exec(first)
-  return m ? `${m[1]}/${m[2]}`.toLowerCase() : null
+  try {
+    const parsed = new URL(first)
+    const [owner, repo] = parsed.pathname.split('/').filter(Boolean)
+    return owner && repo
+      ? repoKey({ host: parsed.hostname, owner, repo })
+      : null
+  } catch {
+    const match = /(?:github\.com|gitlab\.com)\/([^/\s]+)\/([^/\s]+)/i.exec(first)
+    return match ? `${match[1]}/${match[2]}`.toLowerCase() : null
+  }
 }
 
 /** The lossless identity of a change, for matching a PR against a run.

@@ -35,7 +35,8 @@ def _cp(stdout: str = "", returncode: int = 0, stderr: str = ""):
 
 def _repo(name: str, owner: str = "acme", **over) -> dict:
     row = {
-        "owner": owner, "repo": name, "full_name": f"{owner}/{name}",
+        "host": "github.com", "owner": owner, "repo": name,
+        "full_name": f"{owner}/{name}",
         "pushed_at": "2026-07-20T00:00:00Z", "private": False,
         "archived": False, "can_push": True,
     }
@@ -69,10 +70,18 @@ class TestListUserRepos(_Home):
         rows, truncated = self._run([_repo("widgets")])
         self.assertFalse(truncated)
         self.assertEqual(rows, [{
-            "owner": "acme", "repo": "widgets", "full_name": "acme/widgets",
+            "host": "github.com", "owner": "acme", "repo": "widgets",
+            "full_name": "acme/widgets",
             "pushed_at": "2026-07-20T00:00:00Z", "private": False,
             "archived": False, "can_push": True,
         }])
+
+    def test_carries_the_gh_host_that_produced_the_rows(self):
+        with patch.object(
+            discovery, "default_gh_host", return_value="ghe.example.com"
+        ):
+            rows, _ = self._run([_repo("widgets")])
+        self.assertEqual(rows[0]["host"], "ghe.example.com")
 
     def test_flags_private_archived_and_readonly(self):
         rows, _ = self._run([_repo("secret", private=True, archived=True, can_push=False)])
@@ -146,6 +155,20 @@ class TestMyReposEndpoint(_Home, unittest.IsolatedAsyncioTestCase):
         by = {r["full_name"]: r for r in out["body"]["repos"]}
         self.assertTrue(by["acme/widgets"]["pinned"])
         self.assertFalse(by["acme/other"]["pinned"])
+
+    async def test_pinned_annotation_distinguishes_hosts(self):
+        discovery.add_repo("acme", "widgets", host="ghe.example.com")
+        rows = [
+            _repo("widgets"),
+            _repo("widgets", host="ghe.example.com"),
+        ]
+        with patch.object(
+            self.mod.discovery, "list_user_repos", return_value=(rows, False)
+        ):
+            out = await self._call()
+        by_host = {r["host"]: r for r in out["body"]["repos"]}
+        self.assertFalse(by_host["github.com"]["pinned"])
+        self.assertTrue(by_host["ghe.example.com"]["pinned"])
 
     async def test_setup_required_is_not_an_error_status(self):
         # No gh is a normal first-run state for this panel; the UI still offers

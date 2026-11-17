@@ -209,11 +209,50 @@ class TestPinnedRepos(unittest.TestCase):
         self.assertEqual(repos[0]["full_name"], "ACME/WIDGET")
         matches = [r for r in repos if r["full_name"].lower() == "acme/widget"]
         self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]["host"], "github.com")
 
     def test_remove_repo_is_case_insensitive(self):
         discovery.add_repo("acme", "widget")
         repos = discovery.remove_repo("ACME", "WIDGET")
         self.assertEqual(repos, [])
+
+    def test_same_slug_on_two_hosts_is_two_pins(self):
+        discovery.add_repo("acme", "widget")
+        repos = discovery.add_repo(
+            "acme", "widget", host="github.enterprise.example"
+        )
+        self.assertEqual(
+            [(r["host"], r["full_name"]) for r in repos],
+            [
+                ("github.enterprise.example", "acme/widget"),
+                ("github.com", "acme/widget"),
+            ],
+        )
+        repos = discovery.remove_repo(
+            "ACME", "WIDGET", host="GITHUB.ENTERPRISE.EXAMPLE"
+        )
+        self.assertEqual(
+            [(r["host"], r["full_name"]) for r in repos],
+            [("github.com", "acme/widget")],
+        )
+
+    def test_legacy_pin_without_host_defaults_to_github_dot_com(self):
+        discovery.repos_path().write_text(
+            json.dumps(
+                {
+                    "repos": [
+                        {
+                            "owner": "acme",
+                            "repo": "widget",
+                            "full_name": "acme/widget",
+                            "added_at": "2026-01-01T00:00:00Z",
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.assertEqual(discovery.read_repos()[0]["host"], "github.com")
 
 
 class TestPinnedRepoReadIsGuarded(unittest.TestCase):
@@ -251,7 +290,7 @@ class TestPinnedRepoReadIsGuarded(unittest.TestCase):
         self.assertEqual(rows[0]["repo"], "widgets")
 
     def test_a_row_with_a_non_string_identity_is_dropped(self):
-        """`owner`/`repo` are checked for TYPE, not truthiness.
+        """`host`/`owner`/`repo` are checked for TYPE, not truthiness.
 
         A worker owns this file, and a planted dict or list is truthy, survives
         redaction (which walks strings), and would reach the client as an object
@@ -262,6 +301,7 @@ class TestPinnedRepoReadIsGuarded(unittest.TestCase):
             {"owner": "acme", "repo": ["list"]},
             {"owner": 7, "repo": "widgets"},
             {"owner": "", "repo": "widgets"},
+            {"host": ["not", "a", "string"], "owner": "bad", "repo": "host"},
             {"owner": "good", "repo": "row"},
         ]}))
         rows = discovery.read_repos(self.root)
